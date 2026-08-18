@@ -145,6 +145,60 @@
                   }
                 },
                 {
+                  "entryId": "tweet-1958000000000000006",
+                  "content": {
+                    "entryType": "TimelineTimelineItem",
+                    "itemContent": {
+                      "tweet_results": {
+                        "result": {
+                          "__typename": "Tweet",
+                          "rest_id": "1958000000000000006",
+                          "core": {
+                            "user_results": {
+                              "result": {
+                                "core": { "screen_name": "bad|handle", "name": "Bad Handle" }
+                              }
+                            }
+                          },
+                          "legacy": {
+                            "full_text": "this entry has a markup-breaking handle",
+                            "created_at": "Tue Aug 18 15:10:00 +0000 2026",
+                            "is_quote_status": false,
+                            "in_reply_to_status_id_str": null
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "entryId": "tweet-12a3",
+                  "content": {
+                    "entryType": "TimelineTimelineItem",
+                    "itemContent": {
+                      "tweet_results": {
+                        "result": {
+                          "__typename": "Tweet",
+                          "rest_id": "12a3",
+                          "core": {
+                            "user_results": {
+                              "result": {
+                                "core": { "screen_name": "badid", "name": "Bad Id" }
+                              }
+                            }
+                          },
+                          "legacy": {
+                            "full_text": "this entry has a non-numeric rest_id",
+                            "created_at": "Tue Aug 18 15:20:00 +0000 2026",
+                            "is_quote_status": false,
+                            "in_reply_to_status_id_str": null
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
                   "entryId": "tweet-broken",
                   "content": {
                     "entryType": "TimelineTimelineItem",

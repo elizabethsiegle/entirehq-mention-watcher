@@ -70,3 +70,19 @@ test('parseTimelineJson skips an entry with an unparseable created_at instead of
     'entry with unparseable created_at must not appear in the output',
   );
 });
+
+test('parseTimelineJson skips an entry whose screen_name contains a markup-breaking character', () => {
+  const tweets = parseTimelineJson(fixture);
+  assert.ok(
+    !tweets.some((t) => t.id === '1958000000000000006'),
+    'a handle like "bad|handle" could break out of a Slack link construct and must be dropped, not throw',
+  );
+});
+
+test('parseTimelineJson skips an entry whose rest_id is not purely numeric', () => {
+  const tweets = parseTimelineJson(fixture);
+  assert.ok(
+    !tweets.some((t) => t.author === 'badid'),
+    'a rest_id like "12a3" must be dropped, not throw',
+  );
+});
