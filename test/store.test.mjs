@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadStore, saveStore, diffSeen, MAX_SEEN } from '../scripts/store.mjs';
+import { loadStore, saveStore, diffSeen, markSeen, MAX_SEEN } from '../scripts/store.mjs';
 
 function tweet(id) {
   return {
@@ -89,4 +89,33 @@ test('diffSeen evicts oldest ids beyond MAX_SEEN', () => {
 
 test('MAX_SEEN is 500', () => {
   assert.equal(MAX_SEEN, 500);
+});
+
+test('markSeen appends an id', () => {
+  const result = markSeen({ seen: ['1'], baselined: true }, '2');
+  assert.deepEqual(result.seen, ['1', '2']);
+});
+
+test('markSeen does not mutate the store it was given', () => {
+  const original = { seen: ['1'], baselined: true };
+  markSeen(original, '2');
+  assert.deepEqual(original.seen, ['1']);
+});
+
+test('markSeen is a no-op for an id already present', () => {
+  const result = markSeen({ seen: ['1', '2'], baselined: true }, '2');
+  assert.deepEqual(result.seen, ['1', '2']);
+});
+
+test('markSeen evicts the oldest id when at MAX_SEEN', () => {
+  const seen = Array.from({ length: MAX_SEEN }, (_, i) => `old-${i}`);
+  const result = markSeen({ seen, baselined: true }, 'brand-new');
+  assert.equal(result.seen.length, MAX_SEEN);
+  assert.equal(result.seen.at(-1), 'brand-new');
+  assert.equal(result.seen[0], 'old-1', 'the oldest id is the one dropped');
+});
+
+test('markSeen preserves baselined', () => {
+  assert.equal(markSeen({ seen: [], baselined: false }, '1').baselined, false);
+  assert.equal(markSeen({ seen: [], baselined: true }, '1').baselined, true);
 });
