@@ -11,7 +11,12 @@ test('parseDomRecords keeps only well-formed, unique status records', () => {
   const tweets = parseDomRecords(fixture);
   assert.deepEqual(
     tweets.map((t) => t.id),
-    ['1958000000000000001', '1958000000000000002', '1958000000000000003'],
+    [
+      '1958000000000000001',
+      '1958000000000000002',
+      '1958000000000000003',
+      '1958000000000000007',
+    ],
     'duplicates, non-status permalinks, and undated records must be dropped',
   );
 });
@@ -44,6 +49,13 @@ test('parseDomRecords carries the quoted-tweet flag through', () => {
   const quote = parseDomRecords(fixture)[2];
   assert.equal(quote.isQuoteStatus, true);
   assert.equal(quote.inReplyToStatusId, null);
+});
+
+test('parseDomRecords prefers the permalink author over a mismatched handle', () => {
+  const tweets = parseDomRecords(fixture);
+  const quoted = tweets[3];
+  assert.equal(quoted.author, 'realauthor');
+  assert.equal(quoted.url, 'https://x.com/realauthor/status/1958000000000000007');
 });
 
 test('parseDomRecords returns [] for junk input instead of throwing', () => {
