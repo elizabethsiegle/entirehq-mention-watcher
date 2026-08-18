@@ -1,0 +1,29 @@
+<task-notification>
+<task-id>a7d16d77f3d2c4e4b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-lizziesiegle-Desktop-demos3idkman-entire-twitter-update-slack-and-claudecode/2223e14c-0b22-4b8b-8dcb-f99196cd1cb3/tasks/a7d16d77f3d2c4e4b.output</output-file>
+<status>completed</status>
+<summary>Agent "Review Task 2" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Confirmed: date parsing works correctly on Node v26/V8, `toIso` correctly returns null for garbage, and all 13 tests pass.
+
+**Verdict A — Spec compliance:** MET, with one gap.
+- Pure module, no imports in `parse.mjs`: met.
+- ESM only, `node:test`/`node:assert`: met.
+- `RawTweet` shape exact (7 fields, `id` string, ISO `createdAt`, no leading `@`, case preserved, no `kind`): met.
+- Three shape variations (two screen-name locations, `TweetWithVisibilityResults` envelope, tombstone/cursor skip): met and genuinely exercised — confirmed by tracing that removing the envelope-unwrap or the legacy-screen-name fallback would drop entries 2 from the id list, failing the first test.
+- Junk input → `[]` never throws: met, verified (`null`, `{}`, nested-null, string all pass).
+- **Not verified by any test:** "a bad date handled." Brief's own review checklist explicitly asks this be checked, but neither the fixture nor `parse-json.test.mjs` includes an entry with a malformed/unparseable `created_at`. `toIso` returns `null` and the entry is silently dropped — correct behavior, but stated behavior with zero test coverage. Cannot verify from diff alone that this path was exercised; I confirmed manually via `node -e` that `toIso` degrades correctly, but the shipped test suite does not.
+- No YAGNI violations: only `parseTimelineJson` is exported; four helpers stay internal, matching the brief exactly.
+
+**Verdict B — Task quality:** Implementation and fixture are a byte-for-byte transcription of the brief (confirmed against the diff), so quality is inherited from the brief's own design, which is solid: no duplication, clear naming, appropriate defensive coding (`typeof result !== 'object'`, optional chaining throughout), no dead code. Tests are not vacuous — each targets a specific branch and would fail against a plausibly broken implementation (verified by mentally toggling the envelope-unwrap and legacy-fallback branches).
+
+**Findings:**
+
+- **Important** — `test/parse-json.test.mjs` / `test/fixtures/search-timeline.json`: no entry or test exercises an unparseable `created_at`. The `toIso`-returns-null → skip-entry path (scripts/parse.mjs:288-289) is implemented but has zero test coverage, despite being one of the review's explicitly-flagged failure modes. A regression here (e.g., dropping the `Number.isNaN` guard) would ship silently.
+- **Minor** — Reliance on V8's non-standard parsing of X's `"Tue Aug 18 14:02:11 +0000 2026"` ctime-like format via bare `new Date(...)` (scripts/parse.mjs:250) is not part of the ECMA-262 spec guarantee, only an implementation convention (verified working on Node v26/V8 here). Acceptable given Node is pinned, but undocumented as an assumption in code comments beyond "which Date parses correctly."
+- **Minor** — Test at line 208-213 (`unwraps TweetWithVisibilityResults...`) doesn't assert `isQuoteStatus`/`text` for that entry, relying on the first test's id-list to imply full extraction; not a defect, just thinner coverage than the other three field-mapping tests.
+
+No Critical findings. No scope creep.</result>
+<usage><subagent_tokens>47612</subagent_tokens><tool_uses>5</tool_uses><duration_ms>55021</duration_ms></usage>
+</task-notification>
