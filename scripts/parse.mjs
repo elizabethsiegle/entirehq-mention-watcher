@@ -42,6 +42,7 @@ const ID_RE = /^\d+$/;
 
 export function parseTimelineJson(payload) {
   const tweets = [];
+  const seenIds = new Set();
   for (const entry of entriesOf(payload)) {
     const tweet = unwrapTweet(entry?.content?.itemContent?.tweet_results?.result);
     if (!tweet) continue;
@@ -55,8 +56,16 @@ export function parseTimelineJson(payload) {
     const createdAt = toIso(legacy.created_at);
     if (!createdAt) continue;
 
+    // X can fire more than one SearchTimeline response per navigation (and a
+    // single payload can carry more than one TimelineAddEntries instruction),
+    // so the same tweet can arrive twice. Without this, a duplicate inflates
+    // "tracking N" / "N tracked" counts even though nothing new happened.
+    const idStr = String(id);
+    if (seenIds.has(idStr)) continue;
+    seenIds.add(idStr);
+
     tweets.push({
-      id: String(id),
+      id: idStr,
       author,
       text: legacy.full_text ?? '',
       url: `https://x.com/${author}/status/${id}`,

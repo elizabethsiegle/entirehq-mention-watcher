@@ -86,3 +86,55 @@ test('parseTimelineJson skips an entry whose rest_id is not purely numeric', () 
     'a rest_id like "12a3" must be dropped, not throw',
   );
 });
+
+function tweetEntry(id, overrides = {}) {
+  return {
+    entryId: `tweet-${id}`,
+    content: {
+      entryType: 'TimelineTimelineItem',
+      itemContent: {
+        tweet_results: {
+          result: {
+            __typename: 'Tweet',
+            rest_id: id,
+            core: { user_results: { result: { core: { screen_name: 'somedev', name: 'Some Dev' } } } },
+            legacy: {
+              full_text: 'hey @entirehq',
+              created_at: 'Tue Aug 18 14:02:11 +0000 2026',
+              is_quote_status: false,
+              in_reply_to_status_id_str: null,
+              ...overrides,
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+test('parseTimelineJson dedupes a rest_id repeated across two TimelineAddEntries instructions', () => {
+  const payload = {
+    data: {
+      search_by_raw_query: {
+        search_timeline: {
+          timeline: {
+            instructions: [
+              { type: 'TimelineAddEntries', entries: [tweetEntry('9990000000000000001')] },
+              {
+                type: 'TimelineAddEntries',
+                entries: [tweetEntry('9990000000000000001'), tweetEntry('9990000000000000002')],
+              },
+            ],
+          },
+        },
+      },
+    },
+  };
+
+  const tweets = parseTimelineJson(payload);
+  assert.deepEqual(
+    tweets.map((t) => t.id),
+    ['9990000000000000001', '9990000000000000002'],
+    'the id repeated across both instructions must appear exactly once',
+  );
+});

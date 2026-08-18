@@ -67,6 +67,9 @@ export async function scrapeSearch(config) {
     browser = await chromium.connectOverCDP(session.connectUrl);
 
     const context = browser.contexts()[0];
+    if (!context) {
+      throw new Error('scrapeSearch: Browserbase session returned no browser context to inject cookies into');
+    }
     await context.addCookies(sessionCookies(config));
     const page = context.pages()[0] || (await context.newPage());
 
@@ -108,11 +111,26 @@ export async function scrapeSearch(config) {
     }
 
     const records = await page.evaluate(extractDomRecords);
-    return { source: 'dom', tweets: parseDomRecords(records), loginWall };
+    const domTweets = parseDomRecords(records);
+    // Same scoping as the JSON path just above: the wall check only means
+    // anything when we came back with nothing, otherwise a real result on a
+    // healthy session would falsely trip the backoff/Slack alarm.
+    return { source: 'dom', tweets: domTweets, loginWall: domTweets.length === 0 && loginWall };
   } catch (err) {
     await releaseSession(bb, session, config);
     throw err;
   } finally {
-    if (browser) await browser.close();
+    if (browser) {
+      try {
+        await browser.close();
+      } catch {
+        // A close that throws (a flaky remote CDP socket, typically) must
+        // never replace a real result or a real error from the try block —
+        // that's exactly what a throw from `finally` would do. It also means
+        // the close can't be relied on to have released the Browserbase
+        // session, so do it explicitly here instead.
+        await releaseSession(bb, session, config);
+      }
+    }
   }
 }
