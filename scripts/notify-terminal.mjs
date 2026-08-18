@@ -8,7 +8,7 @@ const C = {
   red: '\x1b[31m',
 };
 
-const MAX_BODY = 240;
+export const MAX_BODY = 240;
 
 const KIND_LABEL = {
   mention: 'mention',
