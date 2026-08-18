@@ -1,0 +1,5 @@
+use superpowers for this project. 
+
+i would like to be notified in claude code and in slack when a new tweet appears on this page https://x.com/search?q=%40entirehq&src=typed_query&f=live
+
+i am trying to follow replies or tags of an account @entirehq
