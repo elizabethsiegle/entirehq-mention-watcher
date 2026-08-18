@@ -1,0 +1,15 @@
+<task-notification>
+<task-id>ab4117a919abe6e1a</task-id>
+<tool-use-id>toolu_01FT3MqoJwhCFNRhiGZNUyFn</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-lizziesiegle-Desktop-demos3idkman-entire-twitter-update-slack-and-claudecode/2223e14c-0b22-4b8b-8dcb-f99196cd1cb3/tasks/ab4117a919abe6e1a.output</output-file>
+<status>completed</status>
+<summary>Agent "Task 2: parse SearchTimeline JSON" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>`.superpowers/` is gitignored, so the report file wasn't committed (it stays on disk as intended, since the harness reads it directly rather than as a repo artifact) — only the test/fixture changes were, which is correct.
+
+Status: DONE
+Commit SHA: `45795c1`
+Test summary: `npm test` → 14/14 passing (added `parseTimelineJson skips an entry with an unparseable created_at instead of emitting an invalid date`; verified it actually catches the regression by temporarily removing the `Number.isNaN` guard and confirming failures, then restored — `scripts/parse.mjs` diff is empty).
+Disagreement: none — finding was valid, fix is test-only.</result>
+<usage><subagent_tokens>64399</subagent_tokens><tool_uses>10</tool_uses><duration_ms>88758</duration_ms></usage>
+</task-notification>
