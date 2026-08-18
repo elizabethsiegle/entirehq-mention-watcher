@@ -1,6 +1,6 @@
 import { loadConfig, loadEnvFile, getProjectDir, getDataDir, ConfigError } from './config.mjs';
 import { filterAndClassify } from './filter.mjs';
-import { loadStore, saveStore, diffSeen } from './store.mjs';
+import { loadStore, saveStore, diffSeen, markSeen } from './store.mjs';
 import { printTweet, printStarted, printBaseline, printQuiet, printWarning } from './notify-terminal.mjs';
 import { buildTweetMessage, buildAlertMessage, postToSlack } from './notify-slack.mjs';
 import { scrapeSearch } from './x-scrape.mjs';
@@ -29,8 +29,6 @@ async function announce(tweet) {
   printTweet(tweet);
   const result = await postToSlack(config.slackWebhookUrl, buildTweetMessage(tweet));
   if (!result.ok) {
-    // Marked seen regardless: the terminal already showed it, and replaying a
-    // Slack message every poll forever is worse than dropping one.
     printQuiet(`slack post failed (status ${result.status}) — terminal only for that one`);
   }
 }
@@ -64,20 +62,36 @@ async function pollOnce() {
 
   const classified = filterAndClassify(tweets, config.ownHandle);
   const { isBaseline, fresh, store: nextStore } = diffSeen(store, classified);
-  store = nextStore;
-  saveStore(dataDir, store);
 
   if (isBaseline) {
+    store = nextStore;
+    saveStore(dataDir, store);
     printBaseline(classified.length);
     return config.pollMs;
   }
 
   if (fresh.length === 0) {
+    // Nothing new to announce, but ids diffSeen already folded in (e.g. from
+    // this same batch) still need to be on disk.
+    store = nextStore;
+    saveStore(dataDir, store);
     printQuiet(`no new mentions (${classified.length} tracked, via ${source})`);
     return config.pollMs;
   }
 
-  for (const tweet of fresh) await announce(tweet);
+  // Persist one tweet at a time, right after its announce attempt, instead
+  // of marking the whole batch seen up front. The watcher is killed by a
+  // SessionEnd hook every time a Claude Code session closes, so dying
+  // mid-batch is routine, not exotic — if the batch were marked seen before
+  // announcing, a death partway through would permanently lose the
+  // unannounced remainder. The mark still happens regardless of whether
+  // postToSlack resolved ok: the terminal already showed the tweet, and
+  // replaying a Slack message every poll forever is worse than dropping one.
+  for (const tweet of fresh) {
+    await announce(tweet);
+    store = markSeen(store, tweet.id);
+    saveStore(dataDir, store);
+  }
   return config.pollMs;
 }
 

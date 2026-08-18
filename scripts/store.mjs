@@ -51,3 +51,14 @@ export function diffSeen(store, tweets) {
   const seen = [...previous, ...added].slice(-MAX_SEEN);
   return { isBaseline, fresh, store: { seen, baselined: true } };
 }
+
+// Pure. Returns a new store; never mutates the one passed in. A no-op if
+// `id` is already present, so re-marking a tweet doesn't grow the list
+// twice. Callers persist one id at a time (see watch.mjs) so a process
+// killed mid-batch can't have already recorded ids it never actually
+// announced.
+export function markSeen(store, id) {
+  const previous = Array.isArray(store?.seen) ? store.seen : [];
+  const seen = previous.includes(id) ? [...previous] : [...previous, id].slice(-MAX_SEEN);
+  return { seen, baselined: Boolean(store?.baselined) };
+}
