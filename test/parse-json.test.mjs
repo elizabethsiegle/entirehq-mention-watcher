@@ -9,7 +9,11 @@ const fixture = JSON.parse(
 
 test('parseTimelineJson extracts every readable tweet and skips the rest', () => {
   const tweets = parseTimelineJson(fixture);
-  assert.equal(tweets.length, 4, 'tombstone and cursor entries must be skipped');
+  assert.equal(
+    tweets.length,
+    4,
+    'tombstone, cursor, and unparseable-date entries must be skipped',
+  );
   assert.deepEqual(
     tweets.map((t) => t.id),
     [
@@ -57,4 +61,12 @@ test('parseTimelineJson returns [] for junk input instead of throwing', () => {
   assert.deepEqual(parseTimelineJson({}), []);
   assert.deepEqual(parseTimelineJson({ data: { search_by_raw_query: null } }), []);
   assert.deepEqual(parseTimelineJson('not json'), []);
+});
+
+test('parseTimelineJson skips an entry with an unparseable created_at instead of emitting an invalid date', () => {
+  const tweets = parseTimelineJson(fixture);
+  assert.ok(
+    !tweets.some((t) => t.id === '1958000000000000005'),
+    'entry with unparseable created_at must not appear in the output',
+  );
 });

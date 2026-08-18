@@ -118,6 +118,33 @@
                   }
                 },
                 {
+                  "entryId": "tweet-1958000000000000005",
+                  "content": {
+                    "entryType": "TimelineTimelineItem",
+                    "itemContent": {
+                      "tweet_results": {
+                        "result": {
+                          "__typename": "Tweet",
+                          "rest_id": "1958000000000000005",
+                          "core": {
+                            "user_results": {
+                              "result": {
+                                "core": { "screen_name": "baddate", "name": "Bad Date" }
+                              }
+                            }
+                          },
+                          "legacy": {
+                            "full_text": "this entry has an unparseable created_at",
+                            "created_at": "not a date",
+                            "is_quote_status": false,
+                            "in_reply_to_status_id_str": null
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
                   "entryId": "tweet-broken",
                   "content": {
                     "entryType": "TimelineTimelineItem",
