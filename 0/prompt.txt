@@ -1,0 +1,32 @@
+<task-notification>
+<task-id>a5a91c6047cf2cc71</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-lizziesiegle-Desktop-demos3idkman-entire-twitter-update-slack-and-claudecode/2223e14c-0b22-4b8b-8dcb-f99196cd1cb3/tasks/a5a91c6047cf2cc71.output</output-file>
+<status>completed</status>
+<summary>Agent "Final fix wave" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Right, that's the final push, and it's a clean baseline swing across all twelve items. Commit `dc7f128` on `feat/entirehq-mention-watcher`. Everything's in the tin.
+
+**Status:** All 12 items applied and verified. No credentials touched, no network calls made, no faked behaviour.
+
+**Tests:** 88/88 passing (78 original + 10 new: 8 in store.test.mjs, 1 in parse-json.test.mjs, 1 in notify-terminal.test.mjs).
+
+**Per-item:**
+1. Non-throwing `browser.close()` + releaseSession fallback — done
+2. loginWallAlerted persisted in store, dedupes across restarts — done
+3. Slack alerts for backoff-cap and 3x consecutive empty scrapes — done
+4. stdout/stderr error guards + uncaughtException handler — done
+5. FULL_PAGE_HINT=18 terminal note + README limitation — done
+6. SessionEnd shared-pid caveat documented in README — done
+7. DOM-path loginWall scoped to emptiness — done
+8. Atomic saveStore (temp file + rename) — done
+9. parseTimelineJson dedupes by id — done
+10. MAX_BODY===240 test pinned — done
+11. Guard on missing browser.contexts()[0], still throws — done
+12. Transient scrape-failure log switched to printQuiet (dim) — done
+
+**Verification commands run for real:** `npm test` (88/88), `node --check` on all 4 modified scripts, `node scripts/watch.mjs` (names the 3 missing vars, exits 1, no hang), `node scripts/hook-start.mjs`/`hook-stop.mjs` (both exit 0, `pgrep -f "scripts/watch.mjs" | wc -l` → 0), and a grep confirming no `exit(2)` call exists anywhere (only an explanatory comment).
+
+Nothing to disagree with — all 12 findings held up on inspection exactly as described.</result>
+<usage><subagent_tokens>99497</subagent_tokens><tool_uses>36</tool_uses><duration_ms>328029</duration_ms></usage>
+</task-notification>
