@@ -1,9 +1,15 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const MAX_SEEN = 500;
 
-const EMPTY = () => ({ seen: [], baselined: false });
+const EMPTY = () => ({
+  seen: [],
+  baselined: false,
+  loginWallAlerted: false,
+  backoffAlerted: false,
+  emptyResultsAlerted: false,
+});
 
 function storePath(dataDir) {
   return join(dataDir, 'seen.json');
@@ -15,7 +21,13 @@ export function loadStore(dataDir) {
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf8'));
     return Array.isArray(parsed?.seen)
-      ? { seen: parsed.seen.map(String), baselined: Boolean(parsed.baselined) }
+      ? {
+          seen: parsed.seen.map(String),
+          baselined: Boolean(parsed.baselined),
+          loginWallAlerted: Boolean(parsed.loginWallAlerted),
+          backoffAlerted: Boolean(parsed.backoffAlerted),
+          emptyResultsAlerted: Boolean(parsed.emptyResultsAlerted),
+        }
       : EMPTY();
   } catch {
     // A corrupt store is not worth crashing over — rebuilding the baseline
@@ -24,9 +36,20 @@ export function loadStore(dataDir) {
   }
 }
 
+// Atomic: write to a temp file in the same directory, then rename over the
+// target. saveStore now runs once per announced tweet (and once per alert
+// flag flip), so a crash mid-write is likelier than it used to be — a
+// partial write would otherwise leave a corrupt file that loadStore's catch
+// turns into a fresh, un-baselined store, silently re-baselining and
+// swallowing every mention on the page from then on. A same-directory
+// rename is atomic on the filesystems this runs on; a cross-device temp
+// file would not be.
 export function saveStore(dataDir, store) {
   mkdirSync(dataDir, { recursive: true });
-  writeFileSync(storePath(dataDir), JSON.stringify(store, null, 2));
+  const path = storePath(dataDir);
+  const tmpPath = join(dataDir, `.seen.json.${process.pid}.${Date.now()}.tmp`);
+  writeFileSync(tmpPath, JSON.stringify(store, null, 2));
+  renameSync(tmpPath, path);
 }
 
 // Pure. Returns a new store; never mutates the one passed in.
@@ -49,7 +72,17 @@ export function diffSeen(store, tweets) {
   }
 
   const seen = [...previous, ...added].slice(-MAX_SEEN);
-  return { isBaseline, fresh, store: { seen, baselined: true } };
+  return {
+    isBaseline,
+    fresh,
+    store: {
+      seen,
+      baselined: true,
+      loginWallAlerted: Boolean(store?.loginWallAlerted),
+      backoffAlerted: Boolean(store?.backoffAlerted),
+      emptyResultsAlerted: Boolean(store?.emptyResultsAlerted),
+    },
+  };
 }
 
 // Pure. Returns a new store; never mutates the one passed in. A no-op if
@@ -60,5 +93,30 @@ export function diffSeen(store, tweets) {
 export function markSeen(store, id) {
   const previous = Array.isArray(store?.seen) ? store.seen : [];
   const seen = previous.includes(id) ? [...previous] : [...previous, id].slice(-MAX_SEEN);
-  return { seen, baselined: Boolean(store?.baselined) };
+  return {
+    seen,
+    baselined: Boolean(store?.baselined),
+    loginWallAlerted: Boolean(store?.loginWallAlerted),
+    backoffAlerted: Boolean(store?.backoffAlerted),
+    emptyResultsAlerted: Boolean(store?.emptyResultsAlerted),
+  };
+}
+
+// Pure setters for the once-only alert flags. Each returns a NEW store with
+// just that flag set; the rest of the store is carried through unchanged.
+// Persisting these (rather than keeping them as module-level variables in
+// watch.mjs) is what makes each alert fire exactly once per episode instead
+// of once per process — the watcher is respawned on every SessionStart and
+// every /clear, which would otherwise reset an in-memory flag and re-alert
+// on a condition that never actually recovered.
+export function setLoginWallAlerted(store, value) {
+  return { ...store, loginWallAlerted: Boolean(value) };
+}
+
+export function setBackoffAlerted(store, value) {
+  return { ...store, backoffAlerted: Boolean(value) };
+}
+
+export function setEmptyResultsAlerted(store, value) {
+  return { ...store, emptyResultsAlerted: Boolean(value) };
 }

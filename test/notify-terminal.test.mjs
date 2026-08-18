@@ -73,6 +73,10 @@ test('formatTweet does not truncate a body of exactly MAX_BODY characters', () =
   assert.equal(bodyLine, body240, 'body should be unchanged');
 });
 
+test('MAX_BODY is 240', () => {
+  assert.equal(MAX_BODY, 240);
+});
+
 test('stripAnsi removes every escape sequence', () => {
   assert.equal(stripAnsi('\x1b[1mbold\x1b[0m'), 'bold');
 });

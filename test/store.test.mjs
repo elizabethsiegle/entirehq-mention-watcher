@@ -3,7 +3,24 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadStore, saveStore, diffSeen, markSeen, MAX_SEEN } from '../scripts/store.mjs';
+import {
+  loadStore,
+  saveStore,
+  diffSeen,
+  markSeen,
+  setLoginWallAlerted,
+  setBackoffAlerted,
+  setEmptyResultsAlerted,
+  MAX_SEEN,
+} from '../scripts/store.mjs';
+
+const EMPTY_STORE = {
+  seen: [],
+  baselined: false,
+  loginWallAlerted: false,
+  backoffAlerted: false,
+  emptyResultsAlerted: false,
+};
 
 function tweet(id) {
   return {
@@ -18,26 +35,45 @@ function tweet(id) {
 
 test('loadStore returns an empty un-baselined store when the file is absent', () => {
   const dir = mkdtempSync(join(tmpdir(), 'store-'));
-  assert.deepEqual(loadStore(dir), { seen: [], baselined: false });
+  assert.deepEqual(loadStore(dir), EMPTY_STORE);
 });
 
 test('loadStore returns an empty un-baselined store when the file is corrupt', () => {
   const dir = mkdtempSync(join(tmpdir(), 'store-'));
   writeFileSync(join(dir, 'seen.json'), '{ not json');
-  assert.deepEqual(loadStore(dir), { seen: [], baselined: false });
+  assert.deepEqual(loadStore(dir), EMPTY_STORE);
 });
 
 test('loadStore defaults baselined to false when an existing file omits it', () => {
   const dir = mkdtempSync(join(tmpdir(), 'store-'));
   writeFileSync(join(dir, 'seen.json'), JSON.stringify({ seen: ['a'] }));
-  assert.deepEqual(loadStore(dir), { seen: ['a'], baselined: false });
+  assert.deepEqual(loadStore(dir), { ...EMPTY_STORE, seen: ['a'] });
+});
+
+test('loadStore defaults loginWallAlerted, backoffAlerted, and emptyResultsAlerted to false when an existing file omits them', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'store-'));
+  writeFileSync(join(dir, 'seen.json'), JSON.stringify({ seen: ['a'], baselined: true }));
+  assert.deepEqual(loadStore(dir), { ...EMPTY_STORE, seen: ['a'], baselined: true });
 });
 
 test('saveStore then loadStore round-trips', () => {
   const dir = join(mkdtempSync(join(tmpdir(), 'store-')), 'nested');
   saveStore(dir, { seen: ['a', 'b'], baselined: true });
-  assert.deepEqual(loadStore(dir), { seen: ['a', 'b'], baselined: true });
+  assert.deepEqual(loadStore(dir), { ...EMPTY_STORE, seen: ['a', 'b'], baselined: true });
   assert.ok(readFileSync(join(dir, 'seen.json'), 'utf8').includes('"a"'));
+});
+
+test('saveStore then loadStore round-trips loginWallAlerted, backoffAlerted, and emptyResultsAlerted', () => {
+  const dir = join(mkdtempSync(join(tmpdir(), 'store-')), 'nested');
+  const full = {
+    seen: ['a'],
+    baselined: true,
+    loginWallAlerted: true,
+    backoffAlerted: true,
+    emptyResultsAlerted: true,
+  };
+  saveStore(dir, full);
+  assert.deepEqual(loadStore(dir), full);
 });
 
 test('diffSeen on a cold store records everything and notifies nothing', () => {
@@ -118,4 +154,63 @@ test('markSeen evicts the oldest id when at MAX_SEEN', () => {
 test('markSeen preserves baselined', () => {
   assert.equal(markSeen({ seen: [], baselined: false }, '1').baselined, false);
   assert.equal(markSeen({ seen: [], baselined: true }, '1').baselined, true);
+});
+
+test('markSeen preserves loginWallAlerted, backoffAlerted, and emptyResultsAlerted', () => {
+  const store = {
+    seen: ['1'],
+    baselined: true,
+    loginWallAlerted: true,
+    backoffAlerted: true,
+    emptyResultsAlerted: true,
+  };
+  const result = markSeen(store, '2');
+  assert.equal(result.loginWallAlerted, true);
+  assert.equal(result.backoffAlerted, true);
+  assert.equal(result.emptyResultsAlerted, true);
+});
+
+test('diffSeen preserves loginWallAlerted, backoffAlerted, and emptyResultsAlerted', () => {
+  const store = {
+    seen: [],
+    baselined: true,
+    loginWallAlerted: true,
+    backoffAlerted: true,
+    emptyResultsAlerted: true,
+  };
+  const result = diffSeen(store, [tweet('1')]);
+  assert.equal(result.store.loginWallAlerted, true);
+  assert.equal(result.store.backoffAlerted, true);
+  assert.equal(result.store.emptyResultsAlerted, true);
+});
+
+test('setLoginWallAlerted sets the flag without mutating the input', () => {
+  const original = { seen: [], baselined: true, loginWallAlerted: false, backoffAlerted: false, emptyResultsAlerted: false };
+  const result = setLoginWallAlerted(original, true);
+  assert.equal(result.loginWallAlerted, true);
+  assert.equal(original.loginWallAlerted, false, 'input must not be mutated');
+});
+
+test('setBackoffAlerted sets the flag without mutating the input', () => {
+  const original = { seen: [], baselined: true, loginWallAlerted: false, backoffAlerted: false, emptyResultsAlerted: false };
+  const result = setBackoffAlerted(original, true);
+  assert.equal(result.backoffAlerted, true);
+  assert.equal(original.backoffAlerted, false, 'input must not be mutated');
+});
+
+test('setEmptyResultsAlerted sets the flag without mutating the input', () => {
+  const original = { seen: [], baselined: true, loginWallAlerted: false, backoffAlerted: false, emptyResultsAlerted: false };
+  const result = setEmptyResultsAlerted(original, true);
+  assert.equal(result.emptyResultsAlerted, true);
+  assert.equal(original.emptyResultsAlerted, false, 'input must not be mutated');
+});
+
+test('the alert setters can be turned back off and preserve the rest of the store', () => {
+  const store = { seen: ['1', '2'], baselined: true, loginWallAlerted: true, backoffAlerted: true, emptyResultsAlerted: true };
+  const result = setLoginWallAlerted(store, false);
+  assert.equal(result.loginWallAlerted, false);
+  assert.deepEqual(result.seen, ['1', '2']);
+  assert.equal(result.baselined, true);
+  assert.equal(result.backoffAlerted, true);
+  assert.equal(result.emptyResultsAlerted, true);
 });
