@@ -1,0 +1,146 @@
+{
+  "data": {
+    "search_by_raw_query": {
+      "search_timeline": {
+        "timeline": {
+          "instructions": [
+            {
+              "type": "TimelineAddEntries",
+              "entries": [
+                {
+                  "entryId": "tweet-1958000000000000001",
+                  "content": {
+                    "entryType": "TimelineTimelineItem",
+                    "itemContent": {
+                      "tweet_results": {
+                        "result": {
+                          "__typename": "Tweet",
+                          "rest_id": "1958000000000000001",
+                          "core": {
+                            "user_results": {
+                              "result": {
+                                "core": { "screen_name": "somedev", "name": "Some Dev" }
+                              }
+                            }
+                          },
+                          "legacy": {
+                            "full_text": "hey @entirehq does this work with self-hosted runners?",
+                            "created_at": "Tue Aug 18 14:02:11 +0000 2026",
+                            "is_quote_status": false,
+                            "in_reply_to_status_id_str": null
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "entryId": "tweet-1958000000000000002",
+                  "content": {
+                    "entryType": "TimelineTimelineItem",
+                    "itemContent": {
+                      "tweet_results": {
+                        "result": {
+                          "__typename": "TweetWithVisibilityResults",
+                          "tweet": {
+                            "rest_id": "1958000000000000002",
+                            "core": {
+                              "user_results": {
+                                "result": {
+                                  "legacy": { "screen_name": "oldshape", "name": "Legacy Shape" }
+                                }
+                              }
+                            },
+                            "legacy": {
+                              "full_text": "@entirehq thanks, that fixed it — shipping today",
+                              "created_at": "Tue Aug 18 14:31:00 +0000 2026",
+                              "is_quote_status": false,
+                              "in_reply_to_status_id_str": "1957000000000000009"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "entryId": "tweet-1958000000000000003",
+                  "content": {
+                    "entryType": "TimelineTimelineItem",
+                    "itemContent": {
+                      "tweet_results": {
+                        "result": {
+                          "__typename": "Tweet",
+                          "rest_id": "1958000000000000003",
+                          "core": {
+                            "user_results": {
+                              "result": {
+                                "core": { "screen_name": "QuoteFan", "name": "Quote Fan" }
+                              }
+                            }
+                          },
+                          "legacy": {
+                            "full_text": "this is the release note everyone should read https://t.co/abc",
+                            "created_at": "Tue Aug 18 15:00:45 +0000 2026",
+                            "is_quote_status": true,
+                            "in_reply_to_status_id_str": null
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "entryId": "tweet-1958000000000000004",
+                  "content": {
+                    "entryType": "TimelineTimelineItem",
+                    "itemContent": {
+                      "tweet_results": {
+                        "result": {
+                          "__typename": "Tweet",
+                          "rest_id": "1958000000000000004",
+                          "core": {
+                            "user_results": {
+                              "result": {
+                                "core": { "screen_name": "entirehq", "name": "Entire" }
+                              }
+                            }
+                          },
+                          "legacy": {
+                            "full_text": "We just shipped agent integrations.",
+                            "created_at": "Tue Aug 18 13:00:00 +0000 2026",
+                            "is_quote_status": false,
+                            "in_reply_to_status_id_str": null
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "entryId": "tweet-broken",
+                  "content": {
+                    "entryType": "TimelineTimelineItem",
+                    "itemContent": {
+                      "tweet_results": {
+                        "result": { "__typename": "TweetTombstone" }
+                      }
+                    }
+                  }
+                },
+                {
+                  "entryId": "cursor-bottom-1",
+                  "content": {
+                    "entryType": "TimelineTimelineCursor",
+                    "value": "DAADDAABCgABF..."
+                  }
+                }
+              ]
+            },
+            { "type": "TimelineTerminateTimeline", "direction": "Top" }
+          ]
+        }
+      }
+    }
+  }
+}
