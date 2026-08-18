@@ -31,6 +31,15 @@ function entriesOf(payload) {
     .flatMap((i) => i.entries);
 }
 
+// notify-slack.mjs interpolates `author` and `id` straight into a Slack
+// link construct (`<url|text>`); a value containing `|` or `>` would break
+// out of that syntax. X enforces this handle/id shape server-side, so this
+// is defense in depth rather than a live exploit — but the guarantee
+// downstream code relies on needs to be enforced where the data enters, not
+// just assumed.
+const HANDLE_RE = /^[A-Za-z0-9_]{1,15}$/;
+const ID_RE = /^\d+$/;
+
 export function parseTimelineJson(payload) {
   const tweets = [];
   for (const entry of entriesOf(payload)) {
@@ -41,6 +50,7 @@ export function parseTimelineJson(payload) {
     const author = screenNameOf(tweet);
     const legacy = tweet.legacy;
     if (!id || !author || !legacy) continue;
+    if (!HANDLE_RE.test(author) || !ID_RE.test(String(id))) continue;
 
     const createdAt = toIso(legacy.created_at);
     if (!createdAt) continue;

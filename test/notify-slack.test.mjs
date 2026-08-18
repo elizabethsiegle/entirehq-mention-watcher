@@ -48,6 +48,19 @@ test('buildTweetMessage carries handle, kind, body and link', () => {
   assert.match(json, /1958000000000000001/);
 });
 
+test('buildTweetMessage keeps the Slack link construct intact for a well-formed tweet', () => {
+  // notify-slack.mjs interpolates author/id/url raw into `<url|text>`. This
+  // pins the exact, unbroken construct for a normal tweet — the invariant
+  // that parseTimelineJson's handle/id validation (scripts/parse.mjs) now
+  // protects at the ingestion boundary.
+  const payload = buildTweetMessage(tweet);
+  const context = payload.blocks[1].elements[0].text;
+  assert.ok(
+    context.includes('<https://x.com/somedev/status/1958000000000000001|View on X>'),
+    `expected an intact link construct, got: ${context}`,
+  );
+});
+
 test('buildTweetMessage sets a plain-text fallback for notifications', () => {
   assert.equal(buildTweetMessage(tweet).text, '@somedev replied to @entirehq');
   assert.equal(
