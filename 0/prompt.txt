@@ -1,0 +1,1 @@
+replace the main branch with feat/entirehq-mention-watcher (but include the docs/superpowers and .gitignore from main)
