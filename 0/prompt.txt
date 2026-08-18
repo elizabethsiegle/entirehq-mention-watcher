@@ -1,0 +1,18 @@
+<task-notification>
+<task-id>a83862c282c15b06e</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-lizziesiegle-Desktop-demos3idkman-entire-twitter-update-slack-and-claudecode/2223e14c-0b22-4b8b-8dcb-f99196cd1cb3/tasks/a83862c282c15b06e.output</output-file>
+<status>completed</status>
+<summary>Agent "Task 9: poll loop (code only)" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>**Status:** DONE_WITH_CONCERNS (no live verification performed, as instructed)
+
+**Commit SHA:** `a621fe2e2b9bb6a8d81b00c8a2355e73a284cecd` on `feat/entirehq-mention-watcher`
+
+**Test counts:** 78/78 passing (original 73 + 5 new `markSeen` tests: appends an id, does not mutate input, no-op for existing id, evicts oldest at `MAX_SEEN`, preserves `baselined`). `node --check` on both `scripts/watch.mjs` and `scripts/store.mjs` exit 0. `node scripts/watch.mjs` once still names `X_AUTH_TOKEN, X_CSRF_TOKEN, SLACK_WEBHOOK_URL` and exits 1 without hanging.
+
+Changes: added `markSeen(store, id)` to `scripts/store.mjs` (pure, no mutation, no-op on duplicate, preserves `baselined`); added 5 tests in `test/store.test.mjs`; rewired `watch.mjs`'s new-tweets path to `await announce(tweet); store = markSeen(store, tweet.id); saveStore(dataDir, store)` per tweet, mark happening regardless of Slack outcome. Baseline and no-new-tweets paths unchanged in behavior. Removed the now-stale "Marked seen regardless" comment from `announce()` and replaced it with the real reasoning at the actual persistence site. Report appended to `task-9-report.md` (note: `.superpowers/` is gitignored, so the report lives on disk but isn't part of the commit — same as round 1).
+
+**One thing I'd flag, not disagree with:** per-tweet persistence is the right shape here — it's the minimal change that closes the window, reuses existing eviction logic via `markSeen`, and keeps `diffSeen` unchanged for the baseline/no-op paths. The only alternative I considered — writing the store once per batch but only up through the last successfully-announced index — would still lose nothing, but it's strictly more code for no benefit over a straight per-id `saveStore`, since `saveStore` here is a small synchronous local file write, not a network call. So I implemented it exactly as specified.</result>
+<usage><subagent_tokens>68929</subagent_tokens><tool_uses>13</tool_uses><duration_ms>123852</duration_ms></usage>
+</task-notification>
