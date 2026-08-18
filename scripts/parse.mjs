@@ -79,13 +79,12 @@ export function parseDomRecords(records) {
 
     if (seen.has(id)) continue;
 
-    const createdAt = typeof record.datetime === 'string' ? new Date(record.datetime) : null;
-    if (!createdAt || Number.isNaN(createdAt.getTime())) continue;
+    const createdAt = typeof record.datetime === 'string' ? toIso(record.datetime) : null;
+    if (!createdAt) continue;
 
     // Prefer the permalink's author: the rendered handle can belong to a
     // quoted or retweeting account rather than the tweet's own author.
-    const author = pathAuthor || String(record.handle || '').replace(/^@/, '');
-    if (!author) continue;
+    const author = pathAuthor;
 
     seen.add(id);
     tweets.push({
@@ -93,7 +92,7 @@ export function parseDomRecords(records) {
       author,
       text: typeof record.text === 'string' ? record.text : '',
       url: `https://x.com/${author}/status/${id}`,
-      createdAt: createdAt.toISOString(),
+      createdAt,
       inReplyToStatusId: record.hasReplyingTo ? UNKNOWN_PARENT : null,
       isQuoteStatus: Boolean(record.hasQuotedTweet),
     });

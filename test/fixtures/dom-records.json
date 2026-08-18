@@ -10,7 +10,7 @@
   {
     "permalink": "https://x.com/oldshape/status/1958000000000000002",
     "handle": "oldshape",
-    "text": "@entirehq thanks, that fixed it — shipping today",
+    "text": "@entirehq thanks, that fixed it \u2014 shipping today",
     "datetime": "2026-08-18T14:31:00.000Z",
     "hasReplyingTo": true,
     "hasQuotedTweet": false
@@ -26,7 +26,7 @@
   {
     "permalink": "/somedev/status/1958000000000000001",
     "handle": "@somedev",
-    "text": "duplicate of the first — X renders pinned/promoted repeats",
+    "text": "duplicate of the first \u2014 X renders pinned/promoted repeats",
     "datetime": "2026-08-18T14:02:11.000Z",
     "hasReplyingTo": false,
     "hasQuotedTweet": false
@@ -44,6 +44,14 @@
     "handle": "@nobody",
     "text": "missing timestamp",
     "datetime": null,
+    "hasReplyingTo": false,
+    "hasQuotedTweet": false
+  },
+  {
+    "permalink": "/realauthor/status/1958000000000000007",
+    "handle": "@quotingaccount",
+    "text": "quoting someone else's take on @entirehq",
+    "datetime": "2026-08-18T16:00:00.000Z",
     "hasReplyingTo": false,
     "hasQuotedTweet": false
   }
