@@ -1,9 +1,3 @@
 .env
 node_modules/
 .claude/entirehq-watcher/
-.superpowers/
-
-# editor swap files — a .env.swp would otherwise leak secrets
-*.swp
-*.swo
-*~

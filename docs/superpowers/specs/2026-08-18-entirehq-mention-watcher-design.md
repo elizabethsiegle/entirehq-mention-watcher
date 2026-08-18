@@ -42,7 +42,7 @@ network.
 
 | Module | Responsibility | Depends on |
 | --- | --- | --- |
-| `config.mjs` | Load `.env`, validate required vars, expose config | none (native `process.loadEnvFile()`) |
+| `config.mjs` | Load `.env`, validate required vars, expose config | `dotenv` |
 | `x-scrape.mjs` | Browserbase session, cookie injection, navigation; returns raw payloads | `@browserbasehq/sdk`, `playwright-core`, `config` |
 | `parse.mjs` | Raw payload → normalized `Tweet[]`, `kind` left unset | none (pure) |
 | `filter.mjs` | Exclude own posts, assign `kind` from the raw reply/quote fields | none (pure) |
