@@ -1,0 +1,31 @@
+<task-notification>
+<task-id>a87b0c63420402a96</task-id>
+<tool-use-id>toolu_01JLAoUqk4o6ZgozK2pLKP3z</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-lizziesiegle-Desktop-demos3idkman-entire-twitter-update-slack-and-claudecode/2223e14c-0b22-4b8b-8dcb-f99196cd1cb3/tasks/a87b0c63420402a96.output</output-file>
+<status>completed</status>
+<summary>Agent "Re-review Task 9 fix" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Verdict: ADDRESSED
+
+**Requirement-by-requirement evidence:**
+
+1. **Incremental persistence** — `scripts/watch.mjs` new-tweets loop is `for (const tweet of fresh) { await announce(tweet); store = markSeen(store, tweet.id); saveStore(dataDir, store); }` (lines ~88-92). Announce-then-mark-then-save, per tweet. Confirmed.
+2. **Mark regardless of Slack outcome** — `announce()` never throws on Slack failure: `postToSlack` (scripts/notify-slack.mjs) explicitly catches and resolves `{ok:false,...}` rather than rejecting, so the `markSeen` call after `await announce(tweet)` always runs whether Slack succeeded or not. Confirmed.
+3. **No eviction duplication in watch.mjs** — eviction logic lives only in `markSeen` (store.mjs); watch.mjs just calls it. Confirmed.
+4. **`loadStore`/`saveStore`/`diffSeen`/`MAX_SEEN`/`EMPTY` untouched** — diff shows only an addition after `diffSeen`; no existing lines changed. Confirmed by diff and by all 73 pre-existing tests still passing unchanged.
+5. **New `markSeen` tests** — 5 tests present (append, no-mutate, dup no-op, evict-at-cap, preserves baselined). All pass in a clean run.
+6. **Baseline path unchanged** — still `store=nextStore; saveStore; printBaseline; announce nothing`. Confirmed.
+7. **No-new-tweets path** — still `store=nextStore; saveStore; printQuiet`. Confirmed.
+
+**Reasoning questions:**
+- *Discarding `nextStore`*: In diffSeen's non-baseline branch, `added` and `fresh` are populated by the identical condition in the same loop, so `added`'s ids are always exactly `fresh`'s tweet ids, in the same order. Nothing in `nextStore` beyond `previous` is ever missing from what the per-tweet `markSeen` loop re-adds. No loss.
+- *Slicing equivalence*: Verified algebraically and by test — incremental "append one, cap to last MAX_SEEN" repeated is equivalent to one final `.slice(-MAX_SEEN)` over the whole concatenation, since both are FIFO suffix-taking with append-only insertion. Order preserved.
+- *Dup no-op at MAX_SEEN*: `previous.includes(id) ? [...previous] : [...previous,id].slice(-MAX_SEEN)` — a present id short-circuits before slicing, so no needless eviction.
+- *saveStore throws mid-loop*: possible in-memory/on-disk divergence (memory ahead of disk); worst case is a duplicate re-announce after a crash+restart, not the original data-loss bug. Acceptable residual, not a regression.
+- *Terminal before Slack*: `announce()` calls `printTweet(tweet)` synchronously before `await postToSlack(...)`. Confirmed unchanged.
+
+**Mutation experiment**: Temporarily changed `markSeen` to mutate in place (`previous.push(id)`, drop the slice cap). `npm test` → 78 tests, 2 failed: `markSeen does not mutate the store it was given` and `markSeen evicts the oldest id when at MAX_SEEN` (got 501 instead of 500). File restored; `git diff --stat` and `git status --short` both empty — tree clean.
+
+**New breakage introduced by this diff:** No. `node --check` passes on both files; `npm test` is 78/78 green.</result>
+<usage><subagent_tokens>52106</subagent_tokens><tool_uses>14</tool_uses><duration_ms>106335</duration_ms></usage>
+</task-notification>
