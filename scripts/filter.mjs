@@ -11,7 +11,18 @@ export function filterAndClassify(rawTweets, ownHandle) {
   const own = String(ownHandle || '').replace(/^@/, '').toLowerCase();
 
   return rawTweets
-    .filter((t) => t && typeof t === 'object' && t.id && t.author)
+    .filter((t) => {
+      return (
+        t &&
+        typeof t === 'object' &&
+        t.id &&
+        t.author &&
+        typeof t.text === 'string' &&
+        typeof t.url === 'string' &&
+        t.url &&
+        !Number.isNaN(new Date(t.createdAt).getTime())
+      );
+    })
     .filter((t) => t.author.toLowerCase() !== own)
     .map((t) => ({
       id: t.id,
