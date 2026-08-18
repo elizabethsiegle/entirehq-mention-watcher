@@ -1,0 +1,18 @@
+{
+  "name": "entirehq-mention-watcher",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Watches the @entirehq live search on X and announces new mentions in the Claude Code terminal and Slack.",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "check": "node scripts/check.mjs"
+  },
+  "dependencies": {
+    "@browserbasehq/sdk": "^2.15.0",
+    "playwright-core": "^1.61.1"
+  },
+  "engines": {
+    "node": ">=20.12"
+  }
+}
