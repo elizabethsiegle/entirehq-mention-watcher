@@ -1,0 +1,33 @@
+<task-notification>
+<task-id>a3d66dea032599786</task-id>
+<tool-use-id>toolu_01Lh58S2BWAqqGfP1smRuRtP</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-lizziesiegle-Desktop-demos3idkman-entire-twitter-update-slack-and-claudecode/2223e14c-0b22-4b8b-8dcb-f99196cd1cb3/tasks/a3d66dea032599786.output</output-file>
+<status>completed</status>
+<summary>Agent "Review Task 9" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## A. Spec compliance
+
+| Requirement | Verdict |
+|---|---|
+| Cold cache prints one baseline line, notifies nobody | **Met** — `saveStore` runs before the `isBaseline` branch (watch.mjs, `pollOnce`); `printBaseline` fires, no `postToSlack` call on that path. |
+| Cookie expiry: loud terminal warning + exactly one Slack alert, then 30-min retry, no repeat | **Met** for a continuously-walled episode: `loginWallAlerted` is set `true` before the alert `await` and only reset to `false` on a poll where `loginWall` is false, so a persistent wall never re-alerts. (A wall that clears for one poll and returns will alert again — that's per-episode semantics, which the brief's phrasing supports, not a defect.) |
+| Transient failures: exponential backoff capped at 30 min, reset on first success | **Met**, with a caveat — see Minor finding below on the first-retry multiplier. `consecutiveFailures = 0` runs immediately after a successful `pollOnce()`, so reset-on-first-success is correct. Cap via `Math.min` handles arbitrarily large `2**n` (including `Infinity`) safely — no overflow crash. |
+| Failed Slack post still marks tweet seen | **Met** — `saveStore` (marking all of `fresh` as seen) runs *before* the `for (const tweet of fresh) await announce(tweet)` loop, so a `postToSlack` failure inside `announce` can't undo the already-persisted seen state. |
+| Nothing extra implemented | Diff is Step 1's code verbatim; no scope creep. |
+
+## B. Task quality
+
+**Important**
+- **`scripts/watch.mjs`, `pollOnce` (the `saveStore` call precedes the `for…await announce` loop):** because *all* of `fresh` is marked seen before any of it is announced, a process crash/kill mid-loop (not just a Slack-post failure) silently drops the unannounced tail of the batch — those tweets are never shown in the terminal *or* posted to Slack, and restart won't retry them since they're already in `seen`. The code's inline comment justifies this tradeoff only for a single failed Slack post; here it extends to losing entire mentions (terminal included) on any process death mid-batch. Narrow window, but the consequence is a silently missed mention — the one thing this tool exists to catch.
+
+**Minor**
+- **`backoffMs()` / catch block in `loop()`:** `consecutiveFailures` is incremented *before* `backoffMs()` is called, so the first retry after one failure waits `pollMs × 2¹` (double), not `pollMs × 2⁰`. Still exponential, still capped, still resets on success — just skips the base-interval term. Not a spec violation (brief doesn't pin exact values), just worth a note.
+- **Double signal (`SIGINT`/`SIGTERM` twice quickly):** `shutdown()` isn't guarded against re-entry — a second signal reprints `mention watcher stopped` and calls `process.exit(0)` again. Harmless (second `exit` is a no-op), but not idempotent.
+- **Report's "oldest-first" ordering claim** isn't actually enforced by this file — order is whatever `scrapeSearch`/`filterAndClassify`/`diffSeen` produced. Not a functional defect, just an unverified claim in the report text.
+
+**Not defects (verified clean)**
+- No path exits 2; the only exits are `1` (missing/invalid config) and `0` (shutdown).
+- `postToSlack` never rejects (catches its own network errors and resolves `{ok:false}`), so no unhandled-rejection risk anywhere in this file — every promise created is awaited.
+- The login-wall early return skips `saveStore` but also skips scraping/diffing, so no already-recorded seen ids are ever lost — there's nothing new to lose on that path.</result>
+<usage><subagent_tokens>47999</subagent_tokens><tool_uses>5</tool_uses><duration_ms>105643</duration_ms></usage>
+</task-notification>
