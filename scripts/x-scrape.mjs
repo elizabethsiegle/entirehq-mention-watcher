@@ -22,6 +22,17 @@ async function detectLoginWall(page) {
   return (await page.locator('input[name="text"][autocomplete="username"]').count()) > 0;
 }
 
+// Best-effort release so a session isn't left running (and billing) when
+// something downstream throws. Swallows its own failure so the original
+// error is always what the caller sees.
+async function releaseSession(bb, session, config) {
+  try {
+    await bb.sessions.update(session.id, { status: 'REQUEST_RELEASE', projectId: config.browserbaseProjectId });
+  } catch {
+    // Release is best-effort — a failure here must not mask the original error.
+  }
+}
+
 // Runs inside the browser. Mirrors the record shape parseDomRecords expects.
 function extractDomRecords() {
   return Array.from(document.querySelectorAll('article[data-testid="tweet"]')).map((article) => {
@@ -36,7 +47,13 @@ function extractDomRecords() {
       text: article.querySelector('[data-testid="tweetText"]')?.textContent ?? '',
       datetime: timeEl?.getAttribute('datetime') ?? null,
       hasReplyingTo: article.textContent.includes('Replying to'),
-      hasQuotedTweet: article.querySelectorAll('[data-testid="tweetText"]').length > 1,
+      // Heuristic, DOM-fallback path only — less reliable than the JSON
+      // path's `is_quote_status` field. A genuine quoted tweet is rendered as
+      // a nested clickable card, so its tweetText lives inside a [role="link"]
+      // container. Counting tweetText nodes (the naive check) also fires on
+      // "Translate post", which renders original + translated text as two
+      // same-testid blocks with no quote involved.
+      hasQuotedTweet: article.querySelector('[role="link"] [data-testid="tweetText"]') !== null,
     };
   });
 }
@@ -44,36 +61,58 @@ function extractDomRecords() {
 export async function scrapeSearch(config) {
   const bb = new Browserbase({ apiKey: config.browserbaseApiKey });
   const session = await bb.sessions.create({ projectId: config.browserbaseProjectId });
-  const browser = await chromium.connectOverCDP(session.connectUrl);
 
+  let browser;
   try {
+    browser = await chromium.connectOverCDP(session.connectUrl);
+
     const context = browser.contexts()[0];
     await context.addCookies(sessionCookies(config));
     const page = context.pages()[0] || (await context.newPage());
 
     // Collect every SearchTimeline response the page fires; the first request
     // usually lands before `load` resolves, so the listener goes on first.
+    // Handler promises are tracked (not just fired) and awaited below —
+    // Playwright does not await `response` listeners itself, so without this
+    // a still-in-flight `response.json()` could lose a race against the
+    // fixed settle wait, silently truncating `payloads` and yielding a
+    // partial-but-plausible `source: 'json'` result.
     const payloads = [];
-    page.on('response', async (response) => {
+    const pending = [];
+    page.on('response', (response) => {
       if (!TIMELINE_RE.test(response.url())) return;
-      try {
-        payloads.push(await response.json());
-      } catch {
-        // Non-JSON or already-consumed body — the DOM fallback covers us.
-      }
+      pending.push(
+        response
+          .json()
+          .then((json) => payloads.push(json))
+          .catch(() => {
+            // Non-JSON or already-consumed body — the DOM fallback covers us.
+          }),
+      );
     });
 
     await page.goto(config.searchUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
     await page.waitForTimeout(SETTLE_MS);
+    await Promise.all(pending);
 
     const loginWall = await detectLoginWall(page);
 
     const fromJson = payloads.flatMap((payload) => parseTimelineJson(payload));
-    if (fromJson.length) return { source: 'json', tweets: fromJson, loginWall: false };
+    if (fromJson.length) {
+      // Wall detection is scoped (per spec) to a login-wall redirect or a
+      // zero-result timeline with the login form present. A JSON payload
+      // with real tweets means the session is good, so surfacing the raw
+      // `loginWall` value here would report a false wall on a healthy
+      // watcher and trip its backoff/Slack alarm for nothing.
+      return { source: 'json', tweets: fromJson, loginWall: false };
+    }
 
     const records = await page.evaluate(extractDomRecords);
     return { source: 'dom', tweets: parseDomRecords(records), loginWall };
+  } catch (err) {
+    await releaseSession(bb, session, config);
+    throw err;
   } finally {
-    await browser.close();
+    if (browser) await browser.close();
   }
 }
