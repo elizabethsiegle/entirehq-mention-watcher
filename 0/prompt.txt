@@ -1,0 +1,24 @@
+<task-notification>
+<task-id>a07352d90b76ada25</task-id>
+<tool-use-id>toolu_01VojuN9KESjs6s2JTF8FFRg</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-lizziesiegle-Desktop-demos3idkman-entire-twitter-update-slack-and-claudecode/2223e14c-0b22-4b8b-8dcb-f99196cd1cb3/tasks/a07352d90b76ada25.output</output-file>
+<status>completed</status>
+<summary>Agent "Task 6: terminal notifier" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Status: DONE
+
+**Commits:** `3c9842b` (Fix Round 1)
+
+**Test Summary (from npm test):** `tests 61, pass 61, fail 0`
+
+**Delivered:**
+- Added 8 new tests covering all 5 previously untested exports
+- Tightened truncation test with exact body length assertions (body must be exactly 240 chars, 240th char is `…`)
+- Added converse boundary test: 240-char body not truncated
+- Exported `MAX_BODY` constant to avoid hardcoding
+- Implemented `capture()` helper for stdout assertions
+- Tests validate: `printBaseline` pluralization, `printStarted` arithmetic (no NaN), colour codes, message emission
+
+**No concerns.** Both findings addressed correctly. All 61 tests passing.</result>
+<usage><subagent_tokens>45069</subagent_tokens><tool_uses>11</tool_uses><duration_ms>66313</duration_ms></usage>
+</task-notification>
