@@ -74,6 +74,31 @@ test('filterAndClassify sorts oldest first', () => {
   assert.deepEqual(tweets.map((t) => t.id), ['old', 'new']);
 });
 
+test('filterAndClassify drops an entry missing text', () => {
+  const tweets = filterAndClassify([raw({ text: undefined })], 'entirehq');
+  assert.deepEqual(tweets, []);
+});
+
+test('filterAndClassify drops an entry missing url', () => {
+  const tweets = filterAndClassify([raw({ url: undefined })], 'entirehq');
+  assert.deepEqual(tweets, []);
+});
+
+test('filterAndClassify drops an entry missing url (empty string)', () => {
+  const tweets = filterAndClassify([raw({ url: '' })], 'entirehq');
+  assert.deepEqual(tweets, []);
+});
+
+test('filterAndClassify drops an entry with unparseable createdAt', () => {
+  const tweets = filterAndClassify([raw({ createdAt: 'not a date' })], 'entirehq');
+  assert.deepEqual(tweets, []);
+});
+
+test('filterAndClassify keeps an entry with empty text', () => {
+  const [t] = filterAndClassify([raw({ text: '' })], 'entirehq');
+  assert.equal(t.text, '');
+});
+
 test('filterAndClassify tolerates junk input', () => {
   assert.deepEqual(filterAndClassify(null, 'entirehq'), []);
   assert.deepEqual(filterAndClassify([null, 'nope'], 'entirehq'), []);
