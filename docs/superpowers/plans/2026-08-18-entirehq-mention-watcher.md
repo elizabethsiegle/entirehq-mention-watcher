@@ -16,7 +16,7 @@ These apply to every task. Values are copied verbatim from the spec.
 
 - **Node ≥ 20.12** — required for `process.loadEnvFile()`. Target machine runs v26.0.0.
 - **ESM only.** `package.json` sets `"type": "module"`; every file uses `import`, never `require`.
-- **No test dependencies.** Tests use the built-in `node:test` runner and `node:assert/strict`. Do not add jest, vitest, mocha, chai, or sinon.
+- **No test dependencies.** Tests use the built-in `node:test` runner and `node:assert/strict`. The runner is invoked as `node --test "test/**/*.test.mjs"` — passing a bare directory (`node --test test/`) does not auto-discover on Node 24/26; it tries to import the directory and exits 1. Do not add jest, vitest, mocha, chai, or sinon.
 - **Runtime dependencies are exactly two:** `@browserbasehq/sdk` and `playwright-core`. Do not add dotenv, axios, node-fetch, cheerio, or jsdom.
 - **A hook must never exit `2`.** Exit code `2` blocks the Claude Code session from starting. Missing config exits `1`; every other hook path exits `0`.
 - **Environment variable names, exactly:** `BROWSERBASE_API_KEY`, `BROWSERBASE_PROJECT_ID`, `X_AUTH_TOKEN`, `X_CSRF_TOKEN`, `SLACK_WEBHOOK_URL` (all required); `X_WATCH_POLL_MS` (default `300000`), `X_SEARCH_QUERY` (default `@entirehq`), `X_OWN_HANDLE` (default `entirehq`) (all optional).
@@ -115,7 +115,7 @@ Every task depends on these two shapes. `RawTweet` is what `parse` emits; `Tweet
   "type": "module",
   "description": "Watches the @entirehq live search on X and announces new mentions in the Claude Code terminal and Slack.",
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test \"test/**/*.test.mjs\"",
     "check": "node scripts/check.mjs"
   },
   "dependencies": {
