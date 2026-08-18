@@ -1,0 +1,37 @@
+<task-notification>
+<task-id>a8dfe532c91c4e3e8</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-lizziesiegle-Desktop-demos3idkman-entire-twitter-update-slack-and-claudecode/2223e14c-0b22-4b8b-8dcb-f99196cd1cb3/tasks/a8dfe532c91c4e3e8.output</output-file>
+<status>completed</status>
+<summary>Agent "Re-review Task 2 fix" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>**FINDING: ADDRESSED**
+
+All 5 conditions hold:
+
+1. **Fixture entry exists** ✓
+   - New entry `rest_id: "1958000000000000005"` with `"created_at": "not a date"`, well-formed otherwise.
+
+2. **Test explicitly names the behavior** ✓
+   - New test: `parseTimelineJson skips an entry with an unparseable created_at instead of emitting an invalid date`. Asserts entry 1958000000000000005 is NOT in output.
+
+3. **Pre-existing tests updated consistently** ✓
+   - Entry count assertion remains 4 (unchanged).
+   - Expected ID list remains `[1,2,3,4]` (entry 5 omitted, as expected).
+   - Test message updated: `'tombstone, cursor, and unparseable-date entries must be skipped'`.
+   - New fixture entry does not appear in parsed output.
+
+4. **Guard is critical (verified by removal test)** ✓
+   - Removed `Number.isNaN(parsed.getTime()) ?` guard.
+   - Result: **6 test failures** with `RangeError: Invalid time value` at `Date.toISOString()` (including the new unparseable-date test).
+   - Restored guard — all tests pass.
+   - `git diff scripts/parse.mjs` shows no changes after restoration.
+
+5. **`scripts/parse.mjs` unchanged by fix** ✓
+   - `git diff --stat HEAD^..HEAD` shows only test files: `test/fixtures/search-timeline.json` (+27 lines) and `test/parse-json.test.mjs` (+14, -1).
+
+**New breakage:** No. All 14 tests pass (7 config + 7 parse), no regressions.
+
+**Final npm test count:** 14 tests, 14 pass, 0 fail.</result>
+<usage><subagent_tokens>40419</subagent_tokens><tool_uses>14</tool_uses><duration_ms>52225</duration_ms></usage>
+</task-notification>
