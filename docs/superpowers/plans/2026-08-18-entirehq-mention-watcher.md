@@ -21,6 +21,7 @@ These apply to every task. Values are copied verbatim from the spec.
 - **A hook must never exit `2`.** Exit code `2` blocks the Claude Code session from starting. Missing config exits `1`; every other hook path exits `0`.
 - **Environment variable names, exactly:** `BROWSERBASE_API_KEY`, `BROWSERBASE_PROJECT_ID`, `X_AUTH_TOKEN`, `X_CSRF_TOKEN`, `SLACK_WEBHOOK_URL` (all required); `X_WATCH_POLL_MS` (default `300000`), `X_SEARCH_QUERY` (default `@entirehq`), `X_OWN_HANDLE` (default `entirehq`) (all optional).
 - **`MAX_SEEN = 500`** — the seen-ID store keeps the 500 most recent IDs.
+- **The store carries an explicit `baselined` boolean.** Baseline state is never inferred from `seen.length === 0`.
 - **Data directory:** `<project>/.claude/entirehq-watcher/`, holding `seen.json` and `watch.pid`. Already gitignored.
 - **`@entirehq`'s own posts never notify.** Mentions, replies, and quote tweets by others do.
 - **Cold cache notifies nothing** — it establishes a baseline.
@@ -997,9 +998,16 @@ git commit -m "feat: filter own posts and classify mention/reply/quote"
 - Consumes: `getDataDir()` from `scripts/config.mjs` (Task 1); `Tweet[]` from `scripts/filter.mjs` (Task 4)
 - Produces:
   - `MAX_SEEN` → `500`
-  - `loadStore(dataDir)` → `{ seen: string[] }`. Returns `{ seen: [] }` for a missing or corrupt file.
+  - `loadStore(dataDir)` → `{ seen: string[], baselined: boolean }`. Returns `{ seen: [], baselined: false }` for a missing or corrupt file, and defaults `baselined` to `false` when an existing file omits it.
   - `saveStore(dataDir, store)` → writes `<dataDir>/seen.json`, creating directories as needed.
-  - `diffSeen(store, tweets)` → `{ isBaseline, fresh, store }`. Pure: does not mutate the store passed in. On a cold store (`seen` empty) `isBaseline` is `true` and `fresh` is `[]`, but every id is recorded.
+  - `diffSeen(store, tweets)` → `{ isBaseline, fresh, store }`. Pure: does not mutate the store passed in. `isBaseline` is `true` when `store.baselined` is falsy; in that case `fresh` is `[]`, every id is recorded, and the returned store has `baselined: true`.
+
+**Why `baselined` is an explicit flag and not `seen.length === 0`:** a poll can
+legitimately return zero tweets after filtering — the `@entirehq` search is
+often dominated by `@entirehq`'s own posts, which get filtered out. Inferring
+"baseline" from an empty store would then re-baseline on the next poll and
+silently swallow the first real mention, which is the one notification that
+matters most.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1024,52 +1032,72 @@ function tweet(id) {
   };
 }
 
-test('loadStore returns an empty store when the file is absent', () => {
+test('loadStore returns an empty un-baselined store when the file is absent', () => {
   const dir = mkdtempSync(join(tmpdir(), 'store-'));
-  assert.deepEqual(loadStore(dir), { seen: [] });
+  assert.deepEqual(loadStore(dir), { seen: [], baselined: false });
 });
 
-test('loadStore returns an empty store when the file is corrupt', () => {
+test('loadStore returns an empty un-baselined store when the file is corrupt', () => {
   const dir = mkdtempSync(join(tmpdir(), 'store-'));
   writeFileSync(join(dir, 'seen.json'), '{ not json');
-  assert.deepEqual(loadStore(dir), { seen: [] });
+  assert.deepEqual(loadStore(dir), { seen: [], baselined: false });
+});
+
+test('loadStore defaults baselined to false when an existing file omits it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'store-'));
+  writeFileSync(join(dir, 'seen.json'), JSON.stringify({ seen: ['a'] }));
+  assert.deepEqual(loadStore(dir), { seen: ['a'], baselined: false });
 });
 
 test('saveStore then loadStore round-trips', () => {
   const dir = join(mkdtempSync(join(tmpdir(), 'store-')), 'nested');
-  saveStore(dir, { seen: ['a', 'b'] });
-  assert.deepEqual(loadStore(dir), { seen: ['a', 'b'] });
+  saveStore(dir, { seen: ['a', 'b'], baselined: true });
+  assert.deepEqual(loadStore(dir), { seen: ['a', 'b'], baselined: true });
   assert.ok(readFileSync(join(dir, 'seen.json'), 'utf8').includes('"a"'));
 });
 
 test('diffSeen on a cold store records everything and notifies nothing', () => {
-  const result = diffSeen({ seen: [] }, [tweet('1'), tweet('2')]);
+  const result = diffSeen({ seen: [], baselined: false }, [tweet('1'), tweet('2')]);
   assert.equal(result.isBaseline, true);
   assert.deepEqual(result.fresh, []);
   assert.deepEqual(result.store.seen, ['1', '2']);
+  assert.equal(result.store.baselined, true);
+});
+
+test('an empty poll still marks the store baselined, so the next real mention notifies', () => {
+  const first = diffSeen({ seen: [], baselined: false }, []);
+  assert.equal(first.isBaseline, true);
+  assert.deepEqual(first.store.seen, []);
+  assert.equal(first.store.baselined, true);
+
+  // The bug this guards: inferring baseline from an empty `seen` would swallow
+  // this tweet instead of notifying.
+  const second = diffSeen(first.store, [tweet('1')]);
+  assert.equal(second.isBaseline, false);
+  assert.deepEqual(second.fresh.map((t) => t.id), ['1']);
 });
 
 test('diffSeen returns only ids not already seen', () => {
-  const result = diffSeen({ seen: ['1'] }, [tweet('1'), tweet('2'), tweet('3')]);
+  const result = diffSeen({ seen: ['1'], baselined: true }, [tweet('1'), tweet('2'), tweet('3')]);
   assert.equal(result.isBaseline, false);
   assert.deepEqual(result.fresh.map((t) => t.id), ['2', '3']);
   assert.deepEqual(result.store.seen, ['1', '2', '3']);
 });
 
 test('diffSeen does not mutate the store it was given', () => {
-  const original = { seen: ['1'] };
+  const original = { seen: ['1'], baselined: true };
   diffSeen(original, [tweet('2')]);
   assert.deepEqual(original.seen, ['1']);
 });
 
 test('diffSeen deduplicates ids repeated within one batch', () => {
-  const result = diffSeen({ seen: [] }, [tweet('1'), tweet('1')]);
+  const result = diffSeen({ seen: [], baselined: false }, [tweet('1'), tweet('1')]);
   assert.deepEqual(result.store.seen, ['1']);
 });
 
 test('diffSeen evicts oldest ids beyond MAX_SEEN', () => {
   const seen = Array.from({ length: MAX_SEEN }, (_, i) => `old-${i}`);
-  const result = diffSeen({ seen }, [tweet('brand-new')]);
+  const result = diffSeen({ seen, baselined: true }, [tweet('brand-new')]);
   assert.equal(result.store.seen.length, MAX_SEEN);
   assert.equal(result.store.seen.at(-1), 'brand-new');
   assert.equal(result.store.seen[0], 'old-1', 'the oldest id is the one dropped');
@@ -1095,7 +1123,7 @@ import { join } from 'node:path';
 
 export const MAX_SEEN = 500;
 
-const EMPTY = () => ({ seen: [] });
+const EMPTY = () => ({ seen: [], baselined: false });
 
 function storePath(dataDir) {
   return join(dataDir, 'seen.json');
@@ -1106,7 +1134,9 @@ export function loadStore(dataDir) {
   if (!existsSync(path)) return EMPTY();
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf8'));
-    return Array.isArray(parsed?.seen) ? { seen: parsed.seen.map(String) } : EMPTY();
+    return Array.isArray(parsed?.seen)
+      ? { seen: parsed.seen.map(String), baselined: Boolean(parsed.baselined) }
+      : EMPTY();
   } catch {
     // A corrupt store is not worth crashing over — rebuilding the baseline
     // costs one silent poll.
@@ -1120,10 +1150,14 @@ export function saveStore(dataDir, store) {
 }
 
 // Pure. Returns a new store; never mutates the one passed in.
+//
+// `isBaseline` comes from the explicit `baselined` flag, never from an empty
+// `seen` list: a poll can legitimately yield zero tweets after filtering, and
+// re-baselining on the next poll would silently swallow the first real mention.
 export function diffSeen(store, tweets) {
   const previous = Array.isArray(store?.seen) ? store.seen : [];
   const known = new Set(previous);
-  const isBaseline = previous.length === 0;
+  const isBaseline = !store?.baselined;
 
   const fresh = [];
   const added = [];
@@ -1135,7 +1169,7 @@ export function diffSeen(store, tweets) {
   }
 
   const seen = [...previous, ...added].slice(-MAX_SEEN);
-  return { isBaseline, fresh, store: { seen } };
+  return { isBaseline, fresh, store: { seen, baselined: true } };
 }
 ```
 
