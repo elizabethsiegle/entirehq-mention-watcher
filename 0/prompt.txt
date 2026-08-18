@@ -1,0 +1,31 @@
+<task-notification>
+<task-id>a538ef2275953fe37</task-id>
+<tool-use-id>toolu_01QCFTpU9HU7gG2eu1te9vSK</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-lizziesiegle-Desktop-demos3idkman-entire-twitter-update-slack-and-claudecode/2223e14c-0b22-4b8b-8dcb-f99196cd1cb3/tasks/a538ef2275953fe37.output</output-file>
+<status>completed</status>
+<summary>Agent "Review Task 6" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## A. Spec Compliance
+
+| Requirement | Status |
+|---|---|
+| ESM, zero imports | Met — no import statements in `scripts/notify-terminal.mjs` |
+| 7 named exports | Met — all present with correct names |
+| `formatTweet(tweet, now = new Date())`, `now` used only for stamp | Met |
+| Whitespace collapse to one line | Met — `body()` regex `\s+`→`' '` |
+| &gt;240 char truncation with `…` | Met — `MAX_BODY = 240` |
+| `printBaseline` pluralization (1 vs N) | **Cannot verify** — logic present (`count === 1 ? 'mention' : 'mentions'`) but zero test exercises `printBaseline` at all |
+| Tweet shape / `@` added for display only in `formatTweet` | Met |
+| No unrequested scope | Clean — implementation is a verbatim transcription of the brief, nothing extra added |
+
+## B. Task Quality
+
+**Important — `printTweet`, `printStarted`, `printBaseline`, `printQuiet`, `printWarning` are completely untested.** `test/notify-terminal.test.mjs` only imports `formatTweet` and `stripAnsi`; the other five exports have zero assertions (report's claim of "6 tests covering all public exports" is inaccurate — none of the 6 touch these functions). None will throw on malformed input (`Math.round(pollMs/1000)` silently yields `NaN` rather than throwing, `body()` coerces via `String()`), so Task 9's poll loop won't crash — but a regression in formatting, the `printBaseline` pluralization branch, or `printStarted`'s `pollMs` math would ship silently since nothing asserts their output. `scripts/notify-terminal.mjs:131-136` (`printBaseline`) is the one place a brief-mandated behavior (pluralization) has no test.
+
+**Important — the truncation test doesn't pin `MAX_BODY` to 240.** Verified empirically: with the current 400-char input, `formatTweet`'s stripped output is 333 chars. Fixed overhead (stamp/header/url lines) is 93 chars, so the `assert.ok(plain.length &lt; 400)` bound tolerates any `MAX_BODY` up to ~307 — an implementation bug that set the limit to, say, 280 would pass this test undetected. The only thing actually pinned to 240 is nothing; only "truncation happens at all" is verified.
+
+**Minor — dead/unused code.** `C.green` (`scripts/notify-terminal.mjs:5`) is defined but never referenced. `KIND_LABEL` (`scripts/notify-terminal.mjs:12-16`) is an identity map (`mention→mention`, `reply→reply`, `quote→quote`) — the `?? tweet.kind` fallback makes the whole table redundant; YAGNI.
+
+**No issue — `stripAnsi` and timezone.** Regex `/\x1b\[[0-9;]*m/g` correctly matches all SGR sequences the file emits and is directly unit-tested (`stripAnsi removes every escape sequence`). The `[HH:MM:SS]` test only checks format via regex, not a hardcoded value, so it is timezone-safe.</result>
+<usage><subagent_tokens>43162</subagent_tokens><tool_uses>4</tool_uses><duration_ms>69170</duration_ms></usage>
+</task-notification>
