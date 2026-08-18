@@ -57,3 +57,46 @@ export function parseTimelineJson(payload) {
   }
   return tweets;
 }
+
+const STATUS_PATH_RE = /^(?:https?:\/\/(?:x|twitter)\.com)?\/([A-Za-z0-9_]{1,15})\/status\/(\d+)/;
+
+// The DOM path can see that a "Replying to" block was rendered but not which
+// status is being replied to. This sentinel says "a parent exists, identity
+// unknown" — filter.mjs only ever checks presence, never the value.
+export const UNKNOWN_PARENT = 'unknown';
+
+export function parseDomRecords(records) {
+  if (!Array.isArray(records)) return [];
+  const tweets = [];
+  const seen = new Set();
+
+  for (const record of records) {
+    if (!record || typeof record !== 'object') continue;
+
+    const match = typeof record.permalink === 'string' && record.permalink.match(STATUS_PATH_RE);
+    if (!match) continue;
+    const [, pathAuthor, id] = match;
+
+    if (seen.has(id)) continue;
+
+    const createdAt = typeof record.datetime === 'string' ? new Date(record.datetime) : null;
+    if (!createdAt || Number.isNaN(createdAt.getTime())) continue;
+
+    // Prefer the permalink's author: the rendered handle can belong to a
+    // quoted or retweeting account rather than the tweet's own author.
+    const author = pathAuthor || String(record.handle || '').replace(/^@/, '');
+    if (!author) continue;
+
+    seen.add(id);
+    tweets.push({
+      id,
+      author,
+      text: typeof record.text === 'string' ? record.text : '',
+      url: `https://x.com/${author}/status/${id}`,
+      createdAt: createdAt.toISOString(),
+      inReplyToStatusId: record.hasReplyingTo ? UNKNOWN_PARENT : null,
+      isQuoteStatus: Boolean(record.hasQuotedTweet),
+    });
+  }
+  return tweets;
+}
