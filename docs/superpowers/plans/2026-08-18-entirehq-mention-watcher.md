@@ -1527,7 +1527,7 @@ export function buildTweetMessage(tweet) {
         elements: [
           {
             type: 'mrkdwn',
-            text: `<${tweet.url}|View on X> · <!date^${epoch}^{date_short_pretty} at {time}|${tweet.createdAt}>`,
+            text: `<${tweet.url}|View on X> · ${tweet.kind} · <!date^${epoch}^{date_short_pretty} at {time}|${tweet.createdAt}>`,
           },
         ],
       },
