@@ -1,0 +1,30 @@
+<task-notification>
+<task-id>a31957e0f8a9a5b5d</task-id>
+<tool-use-id>toolu_014grqk9ZqrXqqUmJCehd9hU</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-lizziesiegle-Desktop-demos3idkman-entire-twitter-update-slack-and-claudecode/2223e14c-0b22-4b8b-8dcb-f99196cd1cb3/tasks/a31957e0f8a9a5b5d.output</output-file>
+<status>completed</status>
+<summary>Agent "Review Task 3" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Confirmed via `npm test`: 20/20 pass. Verified line-by-line against the diff and brief.
+
+**A. Spec compliance**
+- `parseDomRecords(records)` → `RawTweet[]`, appended after `parseTimelineJson`: met.
+- `RawTweet` shape exactly `{id, author, text, url, createdAt, inReplyToStatusId, isQuoteStatus}`, no `kind`: met (line 91-99, confirmed by test's `deepEqual`).
+- `author` no leading `@`, case preserved: met.
+- `UNKNOWN_PARENT === 'unknown'`, exported: met (line 66).
+- `STATUS_PATH_RE` matches relative + absolute, `x.com`/`twitter.com`: met (line 61).
+- Junk input → `[]`, never throws: met.
+- `parseTimelineJson`/helpers byte-identical: met (stipulated, and confirmed lines 1-59 unchanged in diff).
+- No extra exports/options: met — only `UNKNOWN_PARENT` and `parseDomRecords` added; `STATUS_PATH_RE` stays internal.
+
+**B. Task quality**
+
+**Critical — dead code masks an unverified requirement.** `scripts/parse.mjs:78,87-88`: `pathAuthor` comes from the regex capture group `[A-Za-z0-9_]{1,15}`, which requires at least one character whenever `match` is non-null (checked at line 77). So `pathAuthor` is *always* truthy when execution reaches line 87, making `|| String(record.handle...)` and the `if (!author) continue` at line 88 unreachable. The brief's stated rationale — "prefer permalink author over handle because handle can belong to a quoting/retweeting account" — is never actually exercised, because no fixture record has a handle that differs from the permalink author (fixtures 1-3 all have identical author strings in both fields, modulo `@`/case). The review brief explicitly called out this exact risk ("a fixture record with a mismatched handle-vs-permalink proves it") and it is unmet: the test suite would pass identically if line 87 read `author = String(record.handle||'').replace(/^@/,'') || pathAuthor` (i.e., handle preferred instead) using these fixtures — the guard is vacuous. This is inherited verbatim from the brief, but the brief is normative for review too, and the implementer added no fixture to close the gap.
+
+**Important — duplication.** `createdAt`/date-validation logic (`new Date(...)`, `Number.isNaN(...getTime())`) is reimplemented ad hoc at parse.mjs:82-83 rather than reusing `toIso` (line 5-9), despite near-identical semantics (only the null-vs-invalid-date input shape differs). Not a correctness bug, but avoidable duplication the task could have factored via a small shared helper without touching `parseTimelineJson`'s body.
+
+**Minor.** `id` is left as a string captured raw from regex (fine, matches spec) but there's no upper bound sanity check — inconsequential given `\d+` and consumers treat it as opaque string, matching `parseTimelineJson`'s `String(id)` behavior. Not a defect.
+
+No other correctness bugs found; duplicate/non-status/null-datetime guards are each proven by a distinct, non-vacuous fixture record (fixtures 4, 5, 6 respectively).</result>
+<usage><subagent_tokens>45756</subagent_tokens><tool_uses>5</tool_uses><duration_ms>46252</duration_ms></usage>
+</task-notification>
