@@ -1,0 +1,52 @@
+<task-notification>
+<task-id>ac3f660db3045fcc9</task-id>
+<tool-use-id>toolu_01YMVbFzAfxVWYrHaata9p2U</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-lizziesiegle-Desktop-demos3idkman-entire-twitter-update-slack-and-claudecode/2223e14c-0b22-4b8b-8dcb-f99196cd1cb3/tasks/ac3f660db3045fcc9.output</output-file>
+<status>completed</status>
+<summary>Agent "Final whole-branch review" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Read spec, plan, ledger, full diff, and every source file. `npm test` → **78/78 pass**; `node --check` clean on all 11 scripts (Node v26).
+
+## Verdict: must fix first — one small wave (5 items)
+
+## Findings
+
+### Important
+
+**1. `x-scrape.mjs:115-117` — unguarded `await browser.close()` in `finally`** (the deferred item; confirmed worse than logged). The masked-error case is the *lesser* problem. On the **success path**, `try { return {...} } finally { await browser.close() }` — a rejecting close discards the returned `{tweets}` and throws from `finally`, past the already-skipped `catch`. So: a healthy poll is logged "scrape failed", backoff escalates toward 30 min, **and `releaseSession()` never runs → a paid Browserbase session leaks**. Closing a remote CDP socket is precisely the flaky op. Wrap in try/catch; release explicitly when close throws.
+
+**2. `watch.mjs:24, 40-47` — cookie-expiry alert is deduped in process memory only.** `loginWallAlerted` resets on every process start. `/clear` fires SessionEnd (kill) then SessionStart (respawn), as does every new session — so stale cookies post **one Slack alert per session start / per `/clear`**, not the spec's "exactly one Slack message" (spec:147). Persist the flag/timestamp in `seen.json`.
+
+**3. Nothing alarms on any failure except a login wall.** `watch.mjs:110-114` and the `fresh.length === 0` path: a broken extractor (X changes shape/selectors → `tweets: []`) or an exhausted Browserbase quota (throw every poll) is terminal-only and indistinguishable from "nobody mentioned us." The spec calls silent failure the worst outcome for cookies; the same logic applies here and nothing implements it. Add one Slack alert (same once-only pattern) when `consecutiveFailures` reaches the 30-min cap, and when N consecutive polls scrape zero tweets after a non-empty baseline. This also removes Ruling 10's stated tell ("a suddenly-lower tracked count") from depending on a human watching the scrollback.
+
+**4. `hook-stop.mjs:5-16` — SessionEnd kills a *shared* watcher.** Session A spawns; session B correctly no-ops on the PID file; B closes first → the watcher dies and A is left silently unwatched, with no respawn and no message. Cheapest honest fix: README + queue item; a refcount is overkill.
+
+**5. No pagination — a hard, undocumented mention ceiling.** `x-scrape.mjs:94-96` reads one page load and never scrolls. More mentions than one page (~20 entries) inside one `X_WATCH_POLL_MS` window and the overflow is never in a payload, never in `seen`, never announced. Silent loss on exactly the busy day the tool matters.
+
+**6. `watch.mjs` has no stdout-error or `uncaughtException` guard.** One EPIPE/EIO on the inherited fd (terminal closed; Claude Code closing the hook's stdout pipe) kills the detached process — no supervisor, no notice, and the PID file still names a dead pid so `hook-start` won't respawn until the next session. Two lines: `process.stdout.on('error', () =&gt; {})` plus an `uncaughtException` handler that logs and keeps looping.
+
+### Minor
+- **`loginWall` asymmetry:** the JSON path forces `false` (Ruling 10) but the DOM path returns the raw value even when it *did* return tweets (`x-scrape.mjs:111`) — the false-positive Ruling 10 exists to prevent is still live on the fallback. Make it `loginWall: tweets.length === 0 &amp;&amp; loginWall` on both paths.
+- `saveStore` (`store.mjs:27-30`) is a non-atomic truncate+write run ~once per tweet plus once per poll; a crash mid-write yields corrupt JSON → `loadStore` returns `baselined: false` → next start silently re-baselines and swallows everything then on the page. tmp+rename, two lines.
+- `parseTimelineJson` doesn't dedupe (unlike `parseDomRecords`); two SearchTimeline responses inflate the "tracking N" / "N tracked" counts. Notifications stay correct via `diffSeen`.
+- Spec:148 wants a *dim* line for scrape failures; `watch.mjs:113` uses red-bold `printWarning`.
+- Spec:146 says missing env exits 1 "without spawning"; `hook-start.mjs` always spawns and writes a PID file for a child that has already died. Behaviour is fine, wording isn't.
+
+Everything else in the spec is implemented as written (record shape, kind rules, baseline line, Block Kit with `kind` badge, 500-cap store, PID lifecycle, `npm run check`, no path exits 2 — verified `grep` shows only `exit(0)`/`exit(1)`).
+
+## Deferred-findings triage
+**Must-fix:** `browser.close()` in `finally` (Important 1). **Include (one line each, cheap):** `assert.equal(MAX_BODY, 240)`; `contexts()[0]` guard. **Leave:** plain `Error` for bad `X_WATCH_POLL_MS`; lowercased `ownHandle`; dep versions above caret; bare `new Date()` on X's date format (V8-only but `engines` pins Node); thin `TweetWithVisibilityResults` assertions; `loadStore`/`saveStore` coverage gaps; dead `C.green` + identity `KIND_LABEL`; unused `handle` in `extractDomRecords`; `text`-fallback escaping inconsistency (moot now that `HANDLE_RE` validates at ingestion); untested `buildAlertMessage` escaping; duplicated handle charset; `pollMs × 2` first retry; non-re-entrant `shutdown()`.
+
+## Ruling review
+Rulings 1-9 and 11 are all correct; 1, 8 and 11 were the right calls against your own plan. **Ruling 10: conclusion right, scope incomplete** — spec-scoping wall detection to zero-result timelines is sound, and the false-positive cost you weighed is real, but you applied it to only one of two return sites. Gate on `tweets.length === 0` uniformly and the ruling becomes consistent rather than asymmetric.
+
+## Verification-queue gaps
+1. **Watcher output in the *real* hook context.** Task 10's "unexpected genuine verification" ran `hook-start` from a Bash tool — different fd topology than a Claude Code `SessionStart` hook, whose stdout is captured (and injected into context, which would also break the spec's zero-token-cost claim). Verify a mention line appears in the live terminal, and that the watcher is still alive after ≥2 poll intervals.
+2. Page size per poll, and whether mention volume can exceed it within `X_WATCH_POLL_MS` (Important 5).
+3. Exactly one cookie-expiry alert **across** a `/clear` and a session restart — item 7 only covers one continuous process.
+4. `/clear` cycle: no double watcher, store not re-baselined.
+5. Slack burst behaviour: &gt;1 msg/sec, 429 + `Retry-After` (`postToSlack` retries blindly at 1s, then drops).
+6. Browserbase concurrency/quota exhaustion, and monthly cost at 288 sessions/day — currently a terminal-only, Slack-silent failure.
+7. Two concurrent sessions, one closes (Important 4).</result>
+<usage><subagent_tokens>106958</subagent_tokens><tool_uses>16</tool_uses><duration_ms>310570</duration_ms></usage>
+</task-notification>
