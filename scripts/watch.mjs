@@ -1,3 +1,5 @@
+import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { loadConfig, loadEnvFile, getProjectDir, getDataDir, ConfigError } from './config.mjs';
 import { filterAndClassify } from './filter.mjs';
 import {
@@ -9,7 +11,6 @@ import {
   setBackoffAlerted,
   setEmptyResultsAlerted,
 } from './store.mjs';
-import { printTweet, printStarted, printBaseline, printQuiet, printWarning } from './notify-terminal.mjs';
 import { buildTweetMessage, buildAlertMessage, postToSlack } from './notify-slack.mjs';
 import { scrapeSearch } from './x-scrape.mjs';
 
@@ -34,17 +35,47 @@ process.stdout.on('error', () => {});
 process.stderr.on('error', () => {});
 
 const projectDir = getProjectDir();
+const dataDir = getDataDir(projectDir);
 loadEnvFile(projectDir);
+
+// Mentions go to Slack and nowhere else. The operational diagnostics that used
+// to print into the Claude Code terminal are appended here instead — without
+// them a silent watcher would be undebuggable, and when Slack itself is the
+// thing that's broken this file is the only place left to say so.
+const logFile = join(dataDir, 'watch.log');
+
+function logLine(message) {
+  try {
+    mkdirSync(dataDir, { recursive: true });
+    appendFileSync(logFile, `${new Date().toISOString()} ${message}\n`);
+  } catch {
+    // Logging must never be the thing that kills the watcher.
+  }
+}
 
 let config;
 try {
   config = loadConfig();
 } catch (err) {
-  printWarning(err instanceof ConfigError ? err.message : String(err));
+  const message = err instanceof ConfigError ? err.message : String(err);
+  logLine(`fatal: ${message}`);
+  // Config failed, so there is no webhook to alert through — stderr is the
+  // only channel left for a fatal startup error.
+  process.stderr.write(`@entirehq mention watcher: ${message}\n`);
   process.exit(1);
 }
 
-const dataDir = getDataDir(projectDir);
+// Register our own pid rather than relying on whoever spawned us. Under
+// launchd nothing else writes this file, and the session hooks read it to
+// decide whether a watcher is already up.
+const pidFile = join(dataDir, 'watch.pid');
+try {
+  mkdirSync(dataDir, { recursive: true });
+  writeFileSync(pidFile, String(process.pid));
+} catch {
+  // A missing pid file costs a duplicate-spawn check, not correctness.
+}
+
 let store = loadStore(dataDir);
 let consecutiveFailures = 0;
 let consecutiveEmptyScrapes = 0;
@@ -52,15 +83,17 @@ let stopped = false;
 let timer = null;
 
 async function announce(tweet) {
-  printTweet(tweet);
   const result = await postToSlack(config.slackWebhookUrl, buildTweetMessage(tweet));
-  if (!result.ok) {
-    printQuiet(`slack post failed (status ${result.status}) — terminal only for that one`);
+  if (result.ok) {
+    logLine(`slack ok: @${tweet.author} ${tweet.kind} ${tweet.url}`);
+  } else {
+    logLine(`slack FAILED (status ${result.status}): @${tweet.author} ${tweet.url} — will retry next poll`);
   }
+  return result.ok;
 }
 
 async function handleLoginWall() {
-  printWarning('X served a login wall — X_AUTH_TOKEN / X_CSRF_TOKEN are stale. Re-copy both cookies into .env and restart the session.');
+  logLine('login wall — X_AUTH_TOKEN / X_CSRF_TOKEN are stale; re-copy both cookies into .env and restart');
   if (!store.loginWallAlerted) {
     store = setLoginWallAlerted(store, true);
     saveStore(dataDir, store);
@@ -88,10 +121,10 @@ async function pollOnce() {
 
   // The JSON path is the healthy one. Say so out loud when we fall back, so a
   // silent degradation in extraction quality is visible rather than guessed at.
-  if (source === 'dom') printQuiet('SearchTimeline JSON not seen — using the DOM fallback');
+  if (source === 'dom') logLine('SearchTimeline JSON not seen — using the DOM fallback');
 
   if (tweets.length >= FULL_PAGE_HINT) {
-    printQuiet(
+    logLine(
       `scraped ${tweets.length} tweets this poll — X returns one page (~20 entries); ` +
         'this result may be truncated and some mentions from this window could be missed',
     );
@@ -114,7 +147,7 @@ async function pollOnce() {
   if (consecutiveEmptyScrapes >= EMPTY_SCRAPE_ALERT_THRESHOLD && !store.emptyResultsAlerted) {
     store = setEmptyResultsAlerted(store, true);
     saveStore(dataDir, store);
-    printWarning(`${consecutiveEmptyScrapes} consecutive polls scraped zero tweets after a non-empty baseline — the extractor may be broken`);
+    logLine(`${consecutiveEmptyScrapes} consecutive polls scraped zero tweets after a non-empty baseline — the extractor may be broken`);
     await postToSlack(
       config.slackWebhookUrl,
       buildAlertMessage(
@@ -130,7 +163,7 @@ async function pollOnce() {
   if (isBaseline) {
     store = nextStore;
     saveStore(dataDir, store);
-    printBaseline(classified.length);
+    logLine(`baseline established — ${classified.length} tweets recorded, nothing announced`);
     return config.pollMs;
   }
 
@@ -139,7 +172,7 @@ async function pollOnce() {
     // this same batch) still need to be on disk.
     store = nextStore;
     saveStore(dataDir, store);
-    printQuiet(`no new mentions (${classified.length} tracked, via ${source})`);
+    logLine(`no new mentions (${classified.length} tracked, via ${source})`);
     return config.pollMs;
   }
 
@@ -148,13 +181,18 @@ async function pollOnce() {
   // SessionEnd hook every time a Claude Code session closes, so dying
   // mid-batch is routine, not exotic — if the batch were marked seen before
   // announcing, a death partway through would permanently lose the
-  // unannounced remainder. The mark still happens regardless of whether
-  // postToSlack resolved ok: the terminal already showed the tweet, and
-  // replaying a Slack message every poll forever is worse than dropping one.
+  // unannounced remainder.
+  //
+  // A tweet is marked seen only once Slack has actually accepted it. Slack is
+  // the sole delivery channel now, so marking a failed post as seen would drop
+  // that mention permanently and silently. Leaving it unseen costs a duplicate
+  // attempt next poll, which is the cheaper mistake.
   for (const tweet of fresh) {
-    await announce(tweet);
-    store = markSeen(store, tweet.id);
-    saveStore(dataDir, store);
+    const delivered = await announce(tweet);
+    if (delivered) {
+      store = markSeen(store, tweet.id);
+      saveStore(dataDir, store);
+    }
   }
   return config.pollMs;
 }
@@ -164,7 +202,7 @@ function backoffMs() {
 }
 
 async function loop() {
-  printStarted(config.pollMs, projectDir);
+  logLine(`watcher started — polling every ${Math.round(config.pollMs / 1000)}s — slack-only — ${projectDir}`);
 
   while (!stopped) {
     let waitMs;
@@ -178,12 +216,12 @@ async function loop() {
     } catch (err) {
       consecutiveFailures += 1;
       waitMs = backoffMs();
-      printQuiet(`scrape failed: ${err.message} — retrying in ${Math.round(waitMs / 1000)}s`);
+      logLine(`scrape failed: ${err.message} — retrying in ${Math.round(waitMs / 1000)}s`);
 
       if (waitMs >= MAX_BACKOFF_MS && !store.backoffAlerted) {
         store = setBackoffAlerted(store, true);
         saveStore(dataDir, store);
-        printWarning('scrape failures have escalated to the 30-minute backoff cap — persistent failure, not a blip');
+        logLine('scrape failures have escalated to the 30-minute backoff cap — persistent failure, not a blip');
         await postToSlack(
           config.slackWebhookUrl,
           buildAlertMessage(
@@ -203,7 +241,12 @@ async function loop() {
 function shutdown() {
   stopped = true;
   if (timer) clearTimeout(timer);
-  printQuiet('mention watcher stopped');
+  try {
+    rmSync(pidFile, { force: true });
+  } catch {
+    // Best effort — a stale pid file is handled by the liveness check.
+  }
+  logLine('watcher stopped');
   process.exit(0);
 }
 
@@ -216,7 +259,7 @@ process.on('SIGTERM', shutdown);
 // never exit(2), which would leave a dead pid in the pid file that
 // hook-start won't know to replace.
 process.on('uncaughtException', (err) => {
-  printWarning(`uncaught exception: ${err?.message ?? err}`);
+  logLine(`uncaught exception: ${err?.message ?? err}`);
 });
 
 await loop();

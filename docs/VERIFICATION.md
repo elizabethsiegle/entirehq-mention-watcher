@@ -1,5 +1,11 @@
 # Outstanding verification
 
+> **Superseded 2026-08-18.** The live gap described below is closed. The
+> pipeline has since run end to end against real X and real Slack: a scrape of
+> 40 tweets via the JSON path, delivered to `#entirehq-x-mentions`, from the
+> launchd daemon in its production configuration. The suite is now 97 tests.
+> This document is kept as the record of what was outstanding at the time.
+
 Everything in this repo passes 88 unit tests, but **nothing has ever run against
 live X or Slack.** The three secrets below were unavailable while the feature was
 built, so every step that needs them was deliberately written and left unrun

@@ -6,7 +6,9 @@
   "description": "Watches the @entirehq live search on X and announces new mentions in the Claude Code terminal and Slack.",
   "scripts": {
     "test": "node --test \"test/**/*.test.mjs\"",
-    "check": "node scripts/check.mjs"
+    "check": "node scripts/check.mjs",
+    "install-agent": "node scripts/install-agent.mjs",
+    "uninstall-agent": "node scripts/uninstall-agent.mjs"
   },
   "dependencies": {
     "@browserbasehq/sdk": "^2.15.0",
