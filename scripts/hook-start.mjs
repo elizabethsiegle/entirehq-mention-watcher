@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getProjectDir, getDataDir } from './config.mjs';
+import { managesProject } from './launchd.mjs';
 
 // Nothing in this file may exit 2 — that return code blocks Claude Code from
 // starting the session. A broken watcher must never cost the user their shell.
@@ -21,6 +22,10 @@ function isRunning(pid) {
 }
 
 try {
+  // A launchd agent for this project keeps its own always-on watcher alive.
+  // Spawning a second one here would double every Slack notification.
+  if (managesProject(projectDir)) process.exit(0);
+
   mkdirSync(dataDir, { recursive: true });
 
   if (existsSync(pidFile)) {
@@ -28,14 +33,15 @@ try {
     if (pid && isRunning(pid)) process.exit(0);
   }
 
-  // stdio inherits the hook's file descriptors — the same TTY Claude Code is
-  // running in — so the detached watcher keeps printing into this terminal
-  // after this hook process exits.
+  // The watcher notifies through Slack only and writes its diagnostics to
+  // .claude/entirehq-watcher/watch.log, so it has nothing to say to the
+  // terminal. Detaching from Claude Code's fds entirely also means closing
+  // the terminal can't hand the process a broken pipe.
   const child = spawn(process.execPath, [join(scriptsDir, 'watch.mjs')], {
     cwd: projectDir,
     env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
     detached: true,
-    stdio: ['ignore', 'inherit', 'inherit'],
+    stdio: 'ignore',
   });
 
   writeFileSync(pidFile, String(child.pid));
