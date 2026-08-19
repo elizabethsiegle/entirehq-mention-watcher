@@ -1,0 +1,17 @@
+i don't see the entire checkpoints branch
+
+---
+
+i just replied to an @entirehq tweet and it did not post or notify me in the slack channel
+
+---
+
+ok no claude code notifications. just slack. it should post to the slack channel i made that has the slack integration
+
+---
+
+so if someone tweets, it will auto-go to the slack channel now?
+
+---
+
+i want it to be genuinely always-on.
