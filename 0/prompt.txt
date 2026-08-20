@@ -1,0 +1,5 @@
+can you add an llm-generated number like how pressing a tweet is to be reviewed? and display that in slack before the actual tweet content
+
+---
+
+ok i added a new api key
