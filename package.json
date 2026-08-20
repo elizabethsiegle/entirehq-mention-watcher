@@ -8,9 +8,11 @@
     "test": "node --test \"test/**/*.test.mjs\"",
     "check": "node scripts/check.mjs",
     "install-agent": "node scripts/install-agent.mjs",
-    "uninstall-agent": "node scripts/uninstall-agent.mjs"
+    "uninstall-agent": "node scripts/uninstall-agent.mjs",
+    "check-score": "node scripts/check-score.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.120.0",
     "@browserbasehq/sdk": "^2.15.0",
     "playwright-core": "^1.61.1"
   },

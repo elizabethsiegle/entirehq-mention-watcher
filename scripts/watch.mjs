@@ -12,6 +12,7 @@ import {
   setEmptyResultsAlerted,
 } from './store.mjs';
 import { buildTweetMessage, buildAlertMessage, postToSlack } from './notify-slack.mjs';
+import { createScorer, scoreTweet } from './score.mjs';
 import { scrapeSearch } from './x-scrape.mjs';
 
 const MAX_BACKOFF_MS = 30 * 60 * 1000;
@@ -76,6 +77,15 @@ try {
   // A missing pid file costs a duplicate-spawn check, not correctness.
 }
 
+// Null whenever no ANTHROPIC_API_KEY is set or scoring is switched off, in
+// which case mentions post exactly as they did before, minus the score line.
+const scorer = config.scoringEnabled ? createScorer(config) : null;
+logLine(
+  scorer
+    ? `urgency scoring on (${config.scoreModel})`
+    : 'urgency scoring off: set ANTHROPIC_API_KEY in .env to score mentions',
+);
+
 let store = loadStore(dataDir);
 let consecutiveFailures = 0;
 let consecutiveEmptyScrapes = 0;
@@ -83,9 +93,15 @@ let stopped = false;
 let timer = null;
 
 async function announce(tweet) {
-  const result = await postToSlack(config.slackWebhookUrl, buildTweetMessage(tweet));
+  // Score first, then post once. A scoring failure must never hold up the
+  // mention itself, so scoreTweet swallows it and we post unscored.
+  const { pressing, error } = await scoreTweet(scorer, tweet);
+  if (error) logLine(`scoring failed for ${tweet.url}: ${error}. Posting unscored.`);
+
+  const result = await postToSlack(config.slackWebhookUrl, buildTweetMessage({ ...tweet, pressing }));
+  const scoreNote = pressing ? `pressing ${pressing.score} (${pressing.reason})` : 'unscored';
   if (result.ok) {
-    logLine(`slack ok: @${tweet.author} ${tweet.kind} ${tweet.url}`);
+    logLine(`slack ok: @${tweet.author} ${tweet.kind} ${scoreNote} ${tweet.url}`);
   } else {
     logLine(`slack FAILED (status ${result.status}): @${tweet.author} ${tweet.url} — will retry next poll`);
   }

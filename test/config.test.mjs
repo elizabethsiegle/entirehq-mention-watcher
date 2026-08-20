@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadConfig, ConfigError } from '../scripts/config.mjs';
+import { SCORE_MODEL } from '../scripts/score.mjs';
 
 const complete = {
   BROWSERBASE_API_KEY: 'bb_live_abc',
@@ -62,4 +63,33 @@ test('loadConfig rejects a non-numeric poll interval', () => {
     () => loadConfig({ ...complete, X_WATCH_POLL_MS: 'soon' }),
     /X_WATCH_POLL_MS/,
   );
+});
+
+test('scoring is off when no ANTHROPIC_API_KEY is set', () => {
+  const config = loadConfig(complete);
+  assert.equal(config.scoringEnabled, false);
+  assert.equal(config.anthropicApiKey, '');
+});
+
+test('scoring turns on with an ANTHROPIC_API_KEY and defaults to the pinned model', () => {
+  const config = loadConfig({ ...complete, ANTHROPIC_API_KEY: ' sk-test ' });
+  assert.equal(config.scoringEnabled, true);
+  assert.equal(config.anthropicApiKey, 'sk-test');
+  assert.equal(config.scoreModel, SCORE_MODEL);
+});
+
+test('X_SCORE_TWEETS accepts an explicit opt-out even when a key is present', () => {
+  for (const off of ['0', 'false', 'no', 'off', 'OFF']) {
+    const config = loadConfig({ ...complete, ANTHROPIC_API_KEY: 'sk-test', X_SCORE_TWEETS: off });
+    assert.equal(config.scoringEnabled, false, `${off} should disable scoring`);
+  }
+  for (const on of ['1', 'true', 'yes', '']) {
+    const config = loadConfig({ ...complete, ANTHROPIC_API_KEY: 'sk-test', X_SCORE_TWEETS: on });
+    assert.equal(config.scoringEnabled, true, `${on} should leave scoring on`);
+  }
+});
+
+test('X_SCORE_MODEL overrides the scoring model', () => {
+  const config = loadConfig({ ...complete, ANTHROPIC_API_KEY: 'sk-test', X_SCORE_MODEL: ' claude-haiku-4-5 ' });
+  assert.equal(config.scoreModel, 'claude-haiku-4-5');
 });

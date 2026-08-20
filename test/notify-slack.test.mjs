@@ -116,3 +116,67 @@ test('postToSlack resolves ok:false on a network error instead of throwing', asy
   assert.equal(result.ok, false);
   assert.equal(result.attempts, 2);
 });
+
+const scoredTweet = {
+  ...tweet,
+  text: 'is @entirehq down? my checkpoints stopped saving an hour ago',
+  pressing: { score: 91, reason: 'possible outage, checkpoints not saving' },
+};
+
+test('buildTweetMessage puts the pressing score on the first line, above the tweet', () => {
+  const section = buildTweetMessage(scoredTweet).blocks[0].text.text;
+  const lines = section.split('\n');
+  assert.match(lines[0], /\*91\* · now · possible outage, checkpoints not saving/);
+  assert.match(lines[1], /@somedev/, 'the author line follows the score');
+  assert.match(lines[2], /checkpoints stopped saving/, 'the tweet body comes last');
+});
+
+test('buildTweetMessage leads the notification text with the score', () => {
+  assert.equal(buildTweetMessage(scoredTweet).text, '[91 now] @somedev replied to @entirehq');
+});
+
+test('buildTweetMessage renders each band label for its score', () => {
+  const labelFor = (score) =>
+    buildTweetMessage({ ...tweet, pressing: { score, reason: 'r' } }).blocks[0].text.text.split('\n')[0];
+  assert.match(labelFor(91), /now/);
+  assert.match(labelFor(70), /today/);
+  assert.match(labelFor(40), /this week/);
+  assert.match(labelFor(20), /fyi/);
+  assert.match(labelFor(3), /noise/);
+});
+
+test('buildTweetMessage omits the score line entirely when a tweet is unscored', () => {
+  for (const pressing of [null, undefined, {}]) {
+    const payload = buildTweetMessage({ ...tweet, pressing });
+    assert.equal(payload.blocks[0].text.text, buildTweetMessage(tweet).blocks[0].text.text);
+    assert.equal(payload.text, '@somedev replied to @entirehq');
+  }
+});
+
+test('buildTweetMessage keeps a score of 0 visible rather than treating it as absent', () => {
+  const section = buildTweetMessage({ ...tweet, pressing: { score: 0, reason: 'crypto spam' } }).blocks[0].text.text;
+  assert.match(section.split('\n')[0], /\*0\* · noise · crypto spam/);
+});
+
+test('buildTweetMessage escapes mrkdwn control characters in the score reason', () => {
+  const section = buildTweetMessage({
+    ...tweet,
+    pressing: { score: 50, reason: 'asks <http://evil|click> & more' },
+  }).blocks[0].text.text;
+  assert.ok(!section.split('\n')[0].includes('<http'), 'a raw link construct must not survive into the score line');
+  assert.match(section, /&lt;http/);
+  assert.match(section, /&amp;/);
+});
+
+test('buildTweetMessage renders a score with no reason without a dangling separator', () => {
+  const first = buildTweetMessage({ ...tweet, pressing: { score: 45, reason: '' } }).blocks[0].text.text.split('\n')[0];
+  assert.match(first, /\*45\* · this week$/);
+});
+
+test('buildTweetMessage ignores a non-numeric score instead of half-rendering it', () => {
+  for (const score of ['91', NaN, null, undefined]) {
+    const payload = buildTweetMessage({ ...tweet, pressing: { score, reason: 'r' } });
+    assert.equal(payload.text, '@somedev replied to @entirehq', `score ${score} must not reach the notification text`);
+    assert.equal(payload.blocks[0].text.text, buildTweetMessage(tweet).blocks[0].text.text);
+  }
+});

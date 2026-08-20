@@ -1,3 +1,5 @@
+import { bandFor } from './score.mjs';
+
 const VERB = {
   mention: 'mentioned',
   reply: 'replied to',
@@ -20,19 +22,41 @@ function body(text) {
   return flat.length > MAX_BODY ? `${flat.slice(0, MAX_BODY - 1)}…` : flat;
 }
 
+// A scored tweet or nothing. One guard for both the score line and the
+// notification prefix, so they can never disagree about whether a score
+// exists (a score of 0 is a real score, and must survive this).
+function readPressing(pressing) {
+  if (!pressing || typeof pressing.score !== 'number' || !Number.isFinite(pressing.score)) return null;
+  return {
+    score: pressing.score,
+    band: bandFor(pressing.score),
+    reason: escapeSlack(String(pressing.reason ?? '').trim()),
+  };
+}
+
 export function buildTweetMessage(tweet) {
   const verb = VERB[tweet.kind] ?? 'mentioned';
   const epoch = Math.floor(new Date(tweet.createdAt).getTime() / 1000);
   const handle = escapeSlack(tweet.author);
+  const pressing = readPressing(tweet.pressing);
+
+  // The urgency leads both the message body and the notification preview, so
+  // the channel can triage from the sidebar without opening anything.
+  const scoreLine = pressing
+    ? `${pressing.band.dot} *${pressing.score}* · ${pressing.band.label}` +
+      `${pressing.reason ? ` · ${pressing.reason}` : ''}\n`
+    : '';
+  const prefix = pressing ? `[${pressing.score} ${pressing.band.label}] ` : '';
 
   return {
-    text: `@${handle} ${verb} @entirehq`,
+    text: `${prefix}@${handle} ${verb} @entirehq`,
     blocks: [
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
           text:
+            scoreLine +
             `*<https://x.com/${encodeURIComponent(tweet.author)}|@${handle}>* ${verb} @entirehq\n` +
             `>${escapeSlack(body(tweet.text))}`,
         },

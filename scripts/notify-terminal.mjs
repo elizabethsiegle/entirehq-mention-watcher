@@ -1,3 +1,5 @@
+import { bandFor } from './score.mjs';
+
 const C = {
   reset: '\x1b[0m',
   dim: '\x1b[2m',
@@ -30,11 +32,23 @@ function body(text) {
   return flat.length > MAX_BODY ? `${flat.slice(0, MAX_BODY - 1)}…` : flat;
 }
 
+// Rendered on the header line rather than its own, so one tweet stays one
+// three-line block in the terminal.
+function pressingTag(pressing) {
+  if (!pressing || typeof pressing.score !== 'number') return '';
+  const band = bandFor(pressing.score);
+  const reason = String(pressing.reason ?? '').trim();
+  return (
+    ` ${C.dim}·${C.reset} ${C.bold}${pressing.score}${C.reset} ${band.label}` +
+    (reason ? ` ${C.dim}(${reason})${C.reset}` : '')
+  );
+}
+
 export function formatTweet(tweet, now = new Date()) {
   const kind = KIND_LABEL[tweet.kind] ?? tweet.kind;
   return (
     `${C.dim}[${stamp(now)}]${C.reset} ${C.yellow}${C.bold}NEW MENTION${C.reset} ` +
-    `${C.cyan}@${tweet.author}${C.reset} ${C.dim}·${C.reset} ${kind}\n` +
+    `${C.cyan}@${tweet.author}${C.reset} ${C.dim}·${C.reset} ${kind}${pressingTag(tweet.pressing)}\n` +
     `  ${body(tweet.text)}\n` +
     `  ${C.dim}${tweet.url}${C.reset}`
   );

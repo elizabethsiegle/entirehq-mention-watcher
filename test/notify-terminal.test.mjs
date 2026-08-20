@@ -133,3 +133,21 @@ test('printWarning uses red and bold colour while printQuiet does not', () => {
   // printQuiet should not use red
   assert.ok(!quietLines[0].includes('\x1b[31m'));
 });
+
+test('formatTweet shows the pressing score on the header line, keeping one block per tweet', () => {
+  const plain = stripAnsi(formatTweet({ ...tweet, pressing: { score: 91, reason: 'possible outage' } }, at));
+  const lines = plain.split('\n');
+  assert.equal(lines.length, 3, 'a scored tweet is still three lines');
+  assert.match(lines[0], /91 now \(possible outage\)/);
+  assert.match(lines[1], /self-hosted runners/, 'the body stays on the second line');
+});
+
+test('formatTweet renders an unscored tweet exactly as before', () => {
+  assert.equal(formatTweet({ ...tweet, pressing: null }, at), formatTweet(tweet, at));
+  assert.equal(formatTweet({ ...tweet, pressing: {} }, at), formatTweet(tweet, at));
+});
+
+test('formatTweet keeps a score of 0 on the header line', () => {
+  const plain = stripAnsi(formatTweet({ ...tweet, pressing: { score: 0, reason: 'spam' } }, at));
+  assert.match(plain.split('\n')[0], /0 noise \(spam\)/);
+});

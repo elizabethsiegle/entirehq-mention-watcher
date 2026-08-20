@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { SCORE_MODEL } from './score.mjs';
 
 const REQUIRED = [
   'BROWSERBASE_API_KEY',
@@ -39,6 +40,13 @@ function present(value) {
   return typeof value === 'string' && value.trim() !== '';
 }
 
+// An explicit opt-out. Anything else, including an unset variable, leaves
+// scoring on whenever a key is present.
+function isOff(value) {
+  if (!present(value)) return false;
+  return ['0', 'false', 'no', 'off'].includes(value.trim().toLowerCase());
+}
+
 export function loadConfig(env = process.env) {
   const missing = REQUIRED.filter((key) => !present(env[key]));
   if (missing.length) throw new ConfigError(missing);
@@ -48,6 +56,12 @@ export function loadConfig(env = process.env) {
   if (!Number.isFinite(pollMs) || pollMs <= 0) {
     throw new Error(`X_WATCH_POLL_MS must be a positive number of milliseconds, got: ${pollRaw}`);
   }
+
+  // Scoring is optional and additive: without a key the watcher behaves
+  // exactly as it did before, posting mentions with no urgency line.
+  const anthropicApiKey = present(env.ANTHROPIC_API_KEY) ? env.ANTHROPIC_API_KEY.trim() : '';
+  const scoreModel = present(env.X_SCORE_MODEL) ? env.X_SCORE_MODEL.trim() : SCORE_MODEL;
+  const scoringEnabled = anthropicApiKey !== '' && !isOff(env.X_SCORE_TWEETS);
 
   const searchQuery = present(env.X_SEARCH_QUERY) ? env.X_SEARCH_QUERY.trim() : '@entirehq';
   const ownHandle = (present(env.X_OWN_HANDLE) ? env.X_OWN_HANDLE.trim() : 'entirehq')
@@ -60,6 +74,9 @@ export function loadConfig(env = process.env) {
     xAuthToken: env.X_AUTH_TOKEN.trim(),
     xCsrfToken: env.X_CSRF_TOKEN.trim(),
     slackWebhookUrl: env.SLACK_WEBHOOK_URL.trim(),
+    anthropicApiKey,
+    scoreModel,
+    scoringEnabled,
     pollMs,
     searchQuery,
     ownHandle,

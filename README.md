@@ -4,17 +4,20 @@ Someone replies to `@entirehq` on X. You find out four hours later, because
 nobody had that search tab open.
 
 This closes that gap. A daemon polls the live `@entirehq` search every five
-minutes and posts every new mention, reply, and quote tweet to Slack.
+minutes and posts every new mention, reply, and quote tweet to Slack, each one
+led by a Claude-scored urgency number so the channel can triage before reading.
 
 ```
+🔴 91 · now · possible outage, checkpoints not saving
 @somedev replied to @entirehq
-> hey @entirehq does this work with self-hosted runners?
+> is @entirehq down? my checkpoints stopped saving an hour ago
 View on X · reply · Aug 18 at 5:17 PM
 ```
 
 It runs as a launchd agent — at login, across reboots, restarted if it dies,
-independent of whether Claude Code is open. Zero tokens: a plain Node process
-posting to a webhook, not an agent.
+independent of whether Claude Code is open. A plain Node process posting to a
+webhook, not an agent: the only tokens it spends are one small Claude call per
+new mention for the score, and it runs fine with scoring switched off.
 
 ## Setup
 
@@ -22,6 +25,7 @@ posting to a webhook, not an agent.
 npm install
 cp .env.example .env       # fill in the five values below
 npm run check              # one live scrape, printed, notifies nobody
+npm run check-score        # four sample mentions scored, no scrape needed
 npm run install-agent      # install + start the daemon
 ```
 
@@ -33,8 +37,10 @@ npm run install-agent      # install + start the daemon
 | `X_CSRF_TOKEN` | same place → `ct0` |
 | `SLACK_WEBHOOK_URL` | api.slack.com/apps → your app → Incoming Webhooks |
 
-Optional: `X_WATCH_POLL_MS` (`300000`), `X_SEARCH_QUERY` (`@entirehq`),
-`X_OWN_HANDLE` (`entirehq`).
+Optional: `ANTHROPIC_API_KEY` (console.anthropic.com → API keys; without it
+mentions post unscored), `X_WATCH_POLL_MS` (`300000`), `X_SEARCH_QUERY`
+(`@entirehq`), `X_OWN_HANDLE` (`entirehq`), `X_SCORE_TWEETS` (`true`),
+`X_SCORE_MODEL` (`claude-opus-5`).
 
 Config is read once at boot — after editing `.env`, re-run `install-agent`.
 
@@ -48,11 +54,11 @@ returning nothing, which would read as "nobody is mentioning us."
 ```
 launchd (RunAtLoad, KeepAlive) → watch.mjs
    ↓
-   scrape ──→ parse ──→ filter ──→ diff ──→ post to Slack
-   Browserbase   X's own    drop our    seen-id     Block Kit
-   + Playwright  JSON       own posts,  store       webhook
-                 (DOM        label
-                  fallback)  kind
+   scrape ──→ parse ──→ filter ──→ diff ──→ score ──→ post to Slack
+   Browserbase   X's own    drop our    seen-id   Claude     Block Kit
+   + Playwright  JSON       own posts,  store     0-100      webhook
+                 (DOM        label                urgency
+                  fallback)  kind                 + reason
    ↓
    sleep 5m, repeat
 ```
@@ -63,6 +69,16 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
 - **Slack is the only channel.** Nothing prints to your terminal; diagnostics
   go to `.claude/entirehq-watcher/watch.log` — including when Slack is the
   thing that's broken.
+- **The score leads, and it is advisory.** One Claude call per new mention
+  returns a 0-100 urgency plus a short reason, rendered above the tweet in the
+  Slack message and in the notification preview. Bands are ours, not the
+  model's: 85+ `now`, 60+ `today`, 35+ `this week`, 10+ `fyi`, below that
+  `noise`, so the same number always reads the same way. A failed, refused, or
+  off-schema score never delays or blocks the mention: it posts unscored and
+  the reason lands in the log. The tweet is fenced and labelled as untrusted
+  data in the prompt, so a mention that tells the model to score itself 0 does
+  not get to. `npm run check-score` includes that injection attempt as a live
+  sample and fails if it scores 60 or above.
 - **It reads X's JSON, not the page.** Playwright intercepts the
   `SearchTimeline` response instead of scraping `data-testid` attributes X
   rotates at will. Reply/quote classification uses real fields
@@ -85,6 +101,9 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
   full. Shorter `X_WATCH_POLL_MS` reduces the risk at the cost of more sessions.
 - **`X_OWN_HANDLE` suppresses one account** — teammates' personal replies do
   notify.
+- **The score is one model's read of one tweet** — no thread, no author
+  history, no follower count. Treat it as triage order, not truth, and check
+  the log line if a number looks wrong: it records the reason the model gave.
 - **One agent per machine** — the launchd label is fixed. A second checkout
   sees the plist names a different project and falls back to its hooks.
 - **Automated browsing is contrary to X's ToS** — accepted knowingly, for one
@@ -97,11 +116,13 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
 | `npm run install-agent` | Install and start the daemon (idempotent) |
 | `npm run uninstall-agent` | Stop and remove it; hooks take over again |
 | `npm run check` | One live scrape, dry-run, notifies nobody |
-| `npm test` | 97 tests: config, both parsers, filter, store, notifiers, launchd |
+| `npm run check-score` | Scores four sample mentions, no Browserbase or cookies needed |
+| `npm test` | 129 tests: config, both parsers, filter, store, scoring, notifiers, launchd |
 | `tail -f .claude/entirehq-watcher/watch.log` | What the daemon is doing |
 
 One Browserbase session per poll — 288/day at the default, now continuous
-rather than only while an editor is open.
+rather than only while an editor is open. Scoring adds one Claude call per new
+mention (not per poll), roughly 500 input and 40 output tokens each.
 
 ## Layout
 
@@ -112,6 +133,7 @@ rather than only while an editor is open.
 | `scripts/parse.mjs` | Both payload shapes → normalized records. Pure |
 | `scripts/filter.mjs` | Drops our own posts, labels mention/reply/quote. Pure |
 | `scripts/store.mjs` | Seen-id cache, 500-id cap, baseline and alert flags |
+| `scripts/score.mjs` | Claude urgency score, structured output, score bands. Pure apart from the call |
 | `scripts/notify-slack.mjs` | Block Kit payload, webhook POST, one retry |
 | `scripts/notify-terminal.mjs` | ANSI output — `check.mjs` only |
 | `scripts/watch.mjs` | The poll loop: backoff, alerting, logging, shutdown |
@@ -119,8 +141,9 @@ rather than only while an editor is open.
 | `scripts/install-agent.mjs` / `uninstall-agent.mjs` | Daemon lifecycle |
 | `scripts/hook-start.mjs` / `hook-stop.mjs` | Session-scoped fallback |
 
-Node ≥ 20.12, ESM, two runtime dependencies (`@browserbasehq/sdk`,
-`playwright-core`), zero test dependencies — the suite is `node:test`.
+Node ≥ 20.12, ESM, three runtime dependencies (`@browserbasehq/sdk`,
+`playwright-core`, `@anthropic-ai/sdk`), zero test dependencies — the suite is
+`node:test`.
 `parse`, `filter`, `store`, and `launchd` are pure functions, which is why the
 logic is testable without a network.
 
