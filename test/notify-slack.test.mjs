@@ -116,3 +116,65 @@ test('postToSlack resolves ok:false on a network error instead of throwing', asy
   assert.equal(result.ok, false);
   assert.equal(result.attempts, 2);
 });
+
+const employeeTweet = {
+  ...tweet,
+  author: 'lizziepika',
+  url: 'https://x.com/lizziepika/status/1958000000000000002',
+  text: 'yep, self-hosted runners work out of the box',
+  score: 20,
+  isEmployee: true,
+};
+
+const outsiderTweet = { ...tweet, score: 60, isEmployee: false };
+
+function contextOf(payload) {
+  return payload.blocks[1].elements[0].text;
+}
+
+test('an employee post is badged and scored in the context line', () => {
+  const context = contextOf(buildTweetMessage(employeeTweet));
+  assert.match(context, /Entire team/);
+  assert.match(context, /score 20/);
+});
+
+test('an outsider post shows its score but carries no team badge', () => {
+  const context = contextOf(buildTweetMessage(outsiderTweet));
+  assert.match(context, /score 60/);
+  assert.ok(!context.includes('Entire team'), `unexpected badge in: ${context}`);
+});
+
+test('the badge reaches the notification fallback, which is all mobile shows', () => {
+  assert.equal(
+    buildTweetMessage(employeeTweet).text,
+    '@lizziepika replied to @entirehq (Entire team)',
+  );
+  assert.equal(buildTweetMessage(outsiderTweet).text, '@somedev replied to @entirehq');
+});
+
+test('a scored tweet keeps the View on X link construct intact', () => {
+  // The context line is now assembled from parts; the link must not be
+  // collateral damage of that refactor.
+  assert.ok(
+    contextOf(buildTweetMessage(employeeTweet)).includes(
+      '<https://x.com/lizziepika/status/1958000000000000002|View on X>',
+    ),
+  );
+});
+
+test('a record written before scoring existed renders no score segment', () => {
+  // store.mjs keeps ids, not records, but buildTweetMessage is also called
+  // directly. "score undefined" in the channel would be worse than silence.
+  const context = contextOf(buildTweetMessage(tweet));
+  assert.ok(!context.includes('score'), `unexpected score in: ${context}`);
+  assert.ok(!context.includes('undefined'), `undefined leaked into: ${context}`);
+});
+
+test('a zero score is rendered, not swallowed as falsy', () => {
+  assert.match(contextOf(buildTweetMessage({ ...tweet, score: 0 })), /score 0/);
+});
+
+test('the scored context line keeps its separator layout', () => {
+  const context = contextOf(buildTweetMessage(employeeTweet));
+  assert.match(context, /View on X> · reply · Entire team · score 20 · <!date/);
+});

@@ -157,7 +157,7 @@ async function pollOnce() {
     );
   }
 
-  const classified = filterAndClassify(tweets, config.ownHandle);
+  const classified = filterAndClassify(tweets, config.ownHandle, config.employeeHandles);
   const { isBaseline, fresh, store: nextStore } = diffSeen(store, classified);
 
   if (isBaseline) {

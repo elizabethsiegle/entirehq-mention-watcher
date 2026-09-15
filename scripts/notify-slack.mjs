@@ -1,3 +1,5 @@
+import { EMPLOYEE_BADGE } from './score.mjs';
+
 const VERB = {
   mention: 'mentioned',
   reply: 'replied to',
@@ -25,8 +27,22 @@ export function buildTweetMessage(tweet) {
   const epoch = Math.floor(new Date(tweet.createdAt).getTime() / 1000);
   const handle = escapeSlack(tweet.author);
 
+  // Assembled from parts rather than interpolated in one string: a record
+  // written before scoring existed has no score, and `score undefined` in the
+  // channel would be worse than simply not saying it.
+  const context = [`<${tweet.url}|View on X>`, tweet.kind];
+  if (tweet.isEmployee) context.push(EMPLOYEE_BADGE);
+  if (Number.isFinite(tweet.score)) context.push(`score ${tweet.score}`);
+  context.push(`<!date^${epoch}^{date_short_pretty} at {time}|${tweet.createdAt}>`);
+
+  // The fallback text is what Slack shows in the notification popup, so the
+  // badge has to reach it too or the whole point is lost on mobile.
+  const fallback = tweet.isEmployee
+    ? `@${handle} ${verb} @entirehq (${EMPLOYEE_BADGE})`
+    : `@${handle} ${verb} @entirehq`;
+
   return {
-    text: `@${handle} ${verb} @entirehq`,
+    text: fallback,
     blocks: [
       {
         type: 'section',
@@ -42,7 +58,7 @@ export function buildTweetMessage(tweet) {
         elements: [
           {
             type: 'mrkdwn',
-            text: `<${tweet.url}|View on X> · ${tweet.kind} · <!date^${epoch}^{date_short_pretty} at {time}|${tweet.createdAt}>`,
+            text: context.join(' · '),
           },
         ],
       },

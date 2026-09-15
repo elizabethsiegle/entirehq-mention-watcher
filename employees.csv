@@ -1,0 +1,16 @@
+# Who counts as the Entire team, for mention scoring.
+#
+# One handle per line. The @ is optional and case does not matter.
+# Everything after the first comma is yours: name, role, notes, whatever.
+# Blank lines and lines starting with # are ignored.
+#
+# Edit this file, then restart the watcher:  npm run install-agent
+# No code change, no redeploy, nothing else to touch.
+#
+# handle,note
+blackgirlbytes
+lizziepika
+evisdrenova
+ashtom
+jkcso
+HaimantikaM

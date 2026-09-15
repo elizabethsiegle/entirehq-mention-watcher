@@ -133,3 +133,34 @@ test('printWarning uses red and bold colour while printQuiet does not', () => {
   // printQuiet should not use red
   assert.ok(!quietLines[0].includes('\x1b[31m'));
 });
+
+test('formatTweet badges and scores an employee post', () => {
+  const plain = stripAnsi(
+    formatTweet({ ...tweet, author: 'lizziepika', score: 20, isEmployee: true }, at),
+  );
+  const header = plain.split('\n')[0];
+  assert.match(header, /Entire team/);
+  assert.match(header, /score 20/);
+});
+
+test('formatTweet scores an outsider without badging them', () => {
+  const header = stripAnsi(formatTweet({ ...tweet, score: 60, isEmployee: false }, at)).split('\n')[0];
+  assert.match(header, /score 60/);
+  assert.ok(!header.includes('Entire team'));
+});
+
+test('formatTweet omits the score segment when there is no score', () => {
+  const header = stripAnsi(formatTweet(tweet, at)).split('\n')[0];
+  assert.ok(!header.includes('score'), `unexpected score in: ${header}`);
+  assert.ok(!header.includes('undefined'), `undefined leaked into: ${header}`);
+});
+
+test('the badge lives on the header, leaving body and url lines untouched', () => {
+  // check.mjs and several assertions above index these lines positionally.
+  const lines = stripAnsi(
+    formatTweet({ ...tweet, score: 20, isEmployee: true }, at),
+  ).split('\n');
+  assert.equal(lines.length, 3);
+  assert.match(lines[1].trim(), /^hey @entirehq/);
+  assert.match(lines[2].trim(), /^https:\/\/x\.com\//);
+});
