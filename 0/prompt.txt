@@ -1,0 +1,9 @@
+work on this trail. recognize that @blackgirlbytes, @lizziepika, @evisdrenova, @ashtom, @jkcso, and @HaimantikaM are employees so they are probably responding to a tag about Entire or tweeting about the company
+
+---
+
+is it ready to commit or push
+
+---
+
+! entire enable --force

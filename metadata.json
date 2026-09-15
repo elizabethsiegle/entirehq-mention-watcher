@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2HA3TJ0A8P2978690WE9C0F",
+  "strategy": "manual-commit",
+  "branch": "edit-score-based-on-if-an-employee-is-tagged",
+  "checkpoints_count": 4,
+  "files_touched": [
+    ".env.example",
+    "README.md",
+    "scripts/check.mjs",
+    "scripts/config.mjs",
+    "scripts/filter.mjs",
+    "scripts/notify-slack.mjs",
+    "scripts/notify-terminal.mjs",
+    "scripts/score.mjs",
+    "scripts/watch.mjs",
+    "test/config.test.mjs",
+    "test/filter.test.mjs",
+    "test/notify-slack.test.mjs",
+    "test/notify-terminal.test.mjs",
+    "test/score.test.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 114,
+    "cache_creation_tokens": 136381,
+    "cache_read_tokens": 6309044,
+    "output_tokens": 57018,
+    "api_call_count": 57
+  }
+}
