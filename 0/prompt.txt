@@ -1,5 +1,1 @@
-restart, commit, and push to deploy
-
----
-
 configure gates and i dont see any agent sessions in the web ui
