@@ -27,7 +27,7 @@ try {
     process.exit(1);
   }
 
-  const classified = filterAndClassify(tweets, config.ownHandle);
+  const classified = filterAndClassify(tweets, config.ownHandle, config.employeeHandles);
   printQuiet(`${tweets.length} tweets scraped, ${classified.length} after filtering out @${config.ownHandle}`);
 
   if (classified.length === 0) {

@@ -1,3 +1,5 @@
+import { EMPLOYEE_BADGE } from './score.mjs';
+
 const C = {
   reset: '\x1b[0m',
   dim: '\x1b[2m',
@@ -32,9 +34,16 @@ function body(text) {
 
 export function formatTweet(tweet, now = new Date()) {
   const kind = KIND_LABEL[tweet.kind] ?? tweet.kind;
+
+  // Mirrors the Slack context line, and for the same reason: `npm run check` is
+  // the only place scoring can be eyeballed before it goes live in a channel.
+  let suffix = '';
+  if (tweet.isEmployee) suffix += ` ${C.dim}·${C.reset} ${C.green}${EMPLOYEE_BADGE}${C.reset}`;
+  if (Number.isFinite(tweet.score)) suffix += ` ${C.dim}· score ${tweet.score}${C.reset}`;
+
   return (
     `${C.dim}[${stamp(now)}]${C.reset} ${C.yellow}${C.bold}NEW MENTION${C.reset} ` +
-    `${C.cyan}@${tweet.author}${C.reset} ${C.dim}·${C.reset} ${kind}\n` +
+    `${C.cyan}@${tweet.author}${C.reset} ${C.dim}·${C.reset} ${kind}${suffix}\n` +
     `  ${body(tweet.text)}\n` +
     `  ${C.dim}${tweet.url}${C.reset}`
   );

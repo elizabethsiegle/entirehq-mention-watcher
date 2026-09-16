@@ -1,5 +1,6 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { DEFAULT_EMPLOYEE_HANDLES, normalizeHandles, parseEmployeeFile } from './score.mjs';
 
 const REQUIRED = [
   'BROWSERBASE_API_KEY',
@@ -22,6 +23,22 @@ export class ConfigError extends Error {
 
 // Claude Code sets CLAUDE_PROJECT_DIR for hook commands. Falling back to cwd
 // keeps the scripts runnable by hand.
+// The hand-editable roster. Lives at the project root so it is obvious, and is
+// read at boot like everything else in this file.
+export const EMPLOYEE_FILE = 'employees.csv';
+
+export function readEmployeeFile(projectDir = getProjectDir()) {
+  try {
+    const path = join(projectDir, EMPLOYEE_FILE);
+    if (!existsSync(path)) return [];
+    return parseEmployeeFile(readFileSync(path, 'utf8'));
+  } catch {
+    // An unreadable roster costs correct badging, not a boot. Falling back to
+    // the built-in list is strictly better than refusing to watch at all.
+    return [];
+  }
+}
+
 export function getProjectDir() {
   return process.env.CLAUDE_PROJECT_DIR || process.cwd();
 }
@@ -39,7 +56,7 @@ function present(value) {
   return typeof value === 'string' && value.trim() !== '';
 }
 
-export function loadConfig(env = process.env) {
+export function loadConfig(env = process.env, projectDir = getProjectDir()) {
   const missing = REQUIRED.filter((key) => !present(env[key]));
   if (missing.length) throw new ConfigError(missing);
 
@@ -54,6 +71,20 @@ export function loadConfig(env = process.env) {
     .replace(/^@/, '')
     .toLowerCase();
 
+  // Who counts as the Entire team, for scoring. Three sources, in order:
+  //   1. X_EMPLOYEE_HANDLES, for a one-off override without touching the file
+  //   2. employees.csv, the file people are actually meant to edit
+  //   3. the built-in roster in score.mjs, so a fresh clone still works
+  // Unlike the other options, getting this wrong only mis-scores a post rather
+  // than breaking the watcher, which is why nothing here throws.
+  const fromFile = present(env.X_EMPLOYEE_HANDLES) ? [] : readEmployeeFile(projectDir);
+  const roster = present(env.X_EMPLOYEE_HANDLES)
+    ? env.X_EMPLOYEE_HANDLES.split(',')
+    : fromFile.length > 0
+      ? fromFile
+      : DEFAULT_EMPLOYEE_HANDLES;
+  const employeeHandles = [...normalizeHandles(roster)];
+
   return {
     browserbaseApiKey: env.BROWSERBASE_API_KEY.trim(),
     browserbaseProjectId: env.BROWSERBASE_PROJECT_ID.trim(),
@@ -63,6 +94,7 @@ export function loadConfig(env = process.env) {
     pollMs,
     searchQuery,
     ownHandle,
+    employeeHandles,
     searchUrl: `https://x.com/search?q=${encodeURIComponent(searchQuery)}&src=typed_query&f=live`,
   };
 }
