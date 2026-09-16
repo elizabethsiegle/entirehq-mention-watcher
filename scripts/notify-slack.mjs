@@ -7,6 +7,7 @@ const VERB = {
 };
 
 const MAX_BODY = 500;
+const EMPLOYEE_HEADER = '👥 ENTIRE TEAM POST';
 
 // Slack mrkdwn treats these three as control characters. Tweet text is
 // untrusted input — without this a tweet could forge a link in our channel.
@@ -26,43 +27,56 @@ export function buildTweetMessage(tweet) {
   const verb = VERB[tweet.kind] ?? 'mentioned';
   const epoch = Math.floor(new Date(tweet.createdAt).getTime() / 1000);
   const handle = escapeSlack(tweet.author);
+  const score = Number.isFinite(tweet.score) ? `score ${tweet.score}` : null;
 
   // Assembled from parts rather than interpolated in one string: a record
   // written before scoring existed has no score, and `score undefined` in the
   // channel would be worse than simply not saying it.
   const context = [`<${tweet.url}|View on X>`, tweet.kind];
   if (tweet.isEmployee) context.push(EMPLOYEE_BADGE);
-  if (Number.isFinite(tweet.score)) context.push(`score ${tweet.score}`);
+  if (score) context.push(score);
   context.push(`<!date^${epoch}^{date_short_pretty} at {time}|${tweet.createdAt}>`);
 
   // The fallback text is what Slack shows in the notification popup, so the
   // badge has to reach it too or the whole point is lost on mobile.
   const fallback = tweet.isEmployee
-    ? `@${handle} ${verb} @entirehq (${EMPLOYEE_BADGE})`
+    ? `${EMPLOYEE_HEADER} — @${handle} ${verb} @entirehq${score ? ` (${score})` : ''}`
     : `@${handle} ${verb} @entirehq`;
+
+  // Context blocks are deliberately quiet in Slack. Put employee authorship
+  // in a header as well, so it is visible while scanning a busy channel.
+  const blocks = [];
+  if (tweet.isEmployee) {
+    blocks.push({
+      type: 'header',
+      text: { type: 'plain_text', text: score ? `${EMPLOYEE_HEADER} · ${score}` : EMPLOYEE_HEADER, emoji: true },
+    });
+  }
+
+  blocks.push(
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text:
+          `*<https://x.com/${encodeURIComponent(tweet.author)}|@${handle}>* ${verb} @entirehq\n` +
+          `>${escapeSlack(body(tweet.text))}`,
+      },
+    },
+    {
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: context.join(' · '),
+        },
+      ],
+    },
+  );
 
   return {
     text: fallback,
-    blocks: [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text:
-            `*<https://x.com/${encodeURIComponent(tweet.author)}|@${handle}>* ${verb} @entirehq\n` +
-            `>${escapeSlack(body(tweet.text))}`,
-        },
-      },
-      {
-        type: 'context',
-        elements: [
-          {
-            type: 'mrkdwn',
-            text: context.join(' · '),
-          },
-        ],
-      },
-    ],
+    blocks,
   };
 }
 

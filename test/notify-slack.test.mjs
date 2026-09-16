@@ -129,25 +129,35 @@ const employeeTweet = {
 const outsiderTweet = { ...tweet, score: 60, isEmployee: false };
 
 function contextOf(payload) {
-  return payload.blocks[1].elements[0].text;
+  return payload.blocks.find((block) => block.type === 'context').elements[0].text;
 }
 
-test('an employee post is badged and scored in the context line', () => {
-  const context = contextOf(buildTweetMessage(employeeTweet));
+test('an employee post has a prominent header as well as a context badge', () => {
+  const payload = buildTweetMessage(employeeTweet);
+  const header = payload.blocks.find((block) => block.type === 'header');
+  assert.deepEqual(header?.text, {
+    type: 'plain_text',
+    text: '👥 ENTIRE TEAM POST · score 20',
+    emoji: true,
+  });
+
+  const context = contextOf(payload);
   assert.match(context, /Entire team/);
   assert.match(context, /score 20/);
 });
 
-test('an outsider post shows its score but carries no team badge', () => {
-  const context = contextOf(buildTweetMessage(outsiderTweet));
+test('an outsider post shows its score but carries no employee treatment', () => {
+  const payload = buildTweetMessage(outsiderTweet);
+  const context = contextOf(payload);
   assert.match(context, /score 60/);
   assert.ok(!context.includes('Entire team'), `unexpected badge in: ${context}`);
+  assert.ok(!payload.blocks.some((block) => block.type === 'header'));
 });
 
 test('the badge reaches the notification fallback, which is all mobile shows', () => {
   assert.equal(
     buildTweetMessage(employeeTweet).text,
-    '@lizziepika replied to @entirehq (Entire team)',
+    '👥 ENTIRE TEAM POST — @lizziepika replied to @entirehq (score 20)',
   );
   assert.equal(buildTweetMessage(outsiderTweet).text, '@somedev replied to @entirehq');
 });
@@ -168,6 +178,12 @@ test('a record written before scoring existed renders no score segment', () => {
   const context = contextOf(buildTweetMessage(tweet));
   assert.ok(!context.includes('score'), `unexpected score in: ${context}`);
   assert.ok(!context.includes('undefined'), `undefined leaked into: ${context}`);
+});
+
+test('an older employee record stays prominent without leaking an undefined score', () => {
+  const payload = buildTweetMessage({ ...tweet, isEmployee: true });
+  assert.equal(payload.blocks[0].text.text, '👥 ENTIRE TEAM POST');
+  assert.equal(payload.text, '👥 ENTIRE TEAM POST — @somedev replied to @entirehq');
 });
 
 test('a zero score is rendered, not swallowed as falsy', () => {

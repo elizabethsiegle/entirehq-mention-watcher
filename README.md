@@ -11,6 +11,7 @@ minutes and posts every new mention, reply, and quote tweet to Slack.
 > hey @entirehq does this work with self-hosted runners?
 View on X · reply · score 60 · Aug 18 at 5:17 PM
 
+👥 ENTIRE TEAM POST · score 20
 @lizziepika replied to @entirehq
 > yep, self-hosted runners work out of the box
 View on X · reply · Entire team · score 20 · Aug 18 at 5:22 PM
@@ -89,11 +90,11 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
 - **A teammate's post is not the same signal as a stranger's.** Posts authored
   by the Entire team (`@blackgirlbytes`, `@lizziepika`, `@evisdrenova`,
   `@ashtom`, `@jkcso`, `@HaimantikaM`) score 20; everyone else scores 60. They
-  are still announced, in the same chronological order, but badged `Entire
-  team` in the Slack context line and in the notification preview, so team
-  chatter never reads as fresh outside interest. Only authorship moves the
-  number: a stranger *tagging* a teammate scores like any other stranger. The
-  roster is `employees.csv`, edited by hand, not by changing code.
+  are still announced, in the same chronological order, but carry a prominent
+  `👥 ENTIRE TEAM POST · score 20` Slack header (and the same notification
+  text), so team chatter never reads as fresh outside interest. Only authorship
+  moves the number: a stranger *tagging* a teammate scores like any other
+  stranger. The roster is `employees.csv`, edited by hand, not by changing code.
 - **Seen only once Slack accepts it.** Marking a failed post as seen would drop
   that mention permanently and silently; a failure costs one duplicate attempt
   next poll instead.
