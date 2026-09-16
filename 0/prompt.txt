@@ -1,5 +1,1 @@
-i dont think it is clear in slack when a notification hits and it is an employee responding. make it more obvious. work on that trail #3 edit score based on if an employee tweets.
-
----
-
-is that deployed? that hasnt been happening in slack
+restart, commit, and push to deploy
