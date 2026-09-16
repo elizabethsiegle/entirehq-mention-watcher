@@ -1,0 +1,64 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2KVANK34K845TJT962PMM2A",
+  "session_id": "01a0a7af-c94b-7ec1-8e92-7d811a0836e9",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-16T00:54:34.794204Z",
+  "branch": "edit-score-based-on-if-an-employee-is-tagged",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    "README.md",
+    "scripts/notify-slack.mjs",
+    "test/notify-slack.test.mjs"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.6-terra",
+  "turn_id": "27e7627ef612",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 40191,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 384256,
+    "output_tokens": 4705,
+    "api_call_count": 11
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-16T00:54:34.766318Z",
+    "agent_lines": 64,
+    "agent_removed": 33,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 64,
+    "total_lines_changed": 97,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 64,
+      "agent_lines_removed": 33
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 64,
+      "agent_lines_removed": 33
+    }
+  ]
+}
