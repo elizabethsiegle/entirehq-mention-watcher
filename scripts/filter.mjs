@@ -31,6 +31,9 @@ export function filterAndClassify(rawTweets, ownHandle) {
       url: t.url,
       createdAt: t.createdAt,
       kind: classify(t),
+      followers: t.followers ?? null,
+      followsUs: t.followsUs ?? null,
+      verified: t.verified ?? false,
     }))
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }

@@ -22,6 +22,22 @@ function screenNameOf(tweet) {
   return user?.core?.screen_name || user?.legacy?.screen_name || null;
 }
 
+// X migrated the author counters out of `user.legacy` (now empty on live
+// payloads) into `relationship_counts`. Both are read so an older payload
+// shape, and the hand-built fixtures, keep working.
+function authorSignal(tweet) {
+  const user = tweet?.core?.user_results?.result ?? {};
+  const followers = user?.relationship_counts?.followers ?? user?.legacy?.followers_count ?? null;
+  const followedBy = user?.relationship_perspectives?.followed_by;
+  return {
+    followers: typeof followers === 'number' ? followers : null,
+    // Whether this account follows @entirehq. Undefined means the payload did
+    // not say, which must not be read as "does not follow us".
+    followsUs: typeof followedBy === 'boolean' ? followedBy : null,
+    verified: Boolean(user?.is_blue_verified || user?.verification?.verified),
+  };
+}
+
 function entriesOf(payload) {
   const instructions =
     payload?.data?.search_by_raw_query?.search_timeline?.timeline?.instructions;
@@ -72,6 +88,7 @@ export function parseTimelineJson(payload) {
       createdAt,
       inReplyToStatusId: legacy.in_reply_to_status_id_str ?? null,
       isQuoteStatus: Boolean(legacy.is_quote_status),
+      ...authorSignal(tweet),
     });
   }
   return tweets;

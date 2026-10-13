@@ -33,6 +33,9 @@ test('parseTimelineJson maps a plain mention completely', () => {
     text: 'hey @entirehq does this work with self-hosted runners?',
     url: 'https://x.com/somedev/status/1958000000000000001',
     createdAt: '2026-08-18T14:02:11.000Z',
+    followers: null,
+    followsUs: null,
+    verified: false,
     inReplyToStatusId: null,
     isQuoteStatus: false,
   });

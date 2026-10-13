@@ -59,7 +59,7 @@ test('own-post matching ignores case and a leading @', () => {
 test('filterAndClassify emits exactly the Tweet fields, no raw leftovers', () => {
   const [t] = filterAndClassify([raw({ inReplyToStatusId: '999' })], 'entirehq');
   assert.deepEqual(Object.keys(t).sort(), [
-    'author', 'createdAt', 'id', 'kind', 'text', 'url',
+    'author', 'createdAt', 'followers', 'followsUs', 'id', 'kind', 'text', 'url', 'verified',
   ]);
 });
 

@@ -61,16 +61,54 @@ test('buildTweetMessage keeps the Slack link construct intact for a well-formed 
   );
 });
 
-test('buildTweetMessage sets a plain-text fallback for notifications', () => {
-  assert.equal(buildTweetMessage(tweet).text, '@somedev replied to @entirehq');
+test('a priority fallback text is marked, because that is what a phone shows', () => {
+  assert.equal(buildTweetMessage(tweet).text, '\u2605 @somedev replied to @entirehq');
   assert.equal(
     buildTweetMessage({ ...tweet, kind: 'mention' }).text,
-    '@somedev mentioned @entirehq',
+    '\u2605 @somedev mentioned @entirehq',
   );
   assert.equal(
     buildTweetMessage({ ...tweet, kind: 'quote' }).text,
-    '@somedev quoted @entirehq',
+    '\u2605 @somedev quoted @entirehq',
   );
+});
+
+test('a routine fallback text carries no marker', () => {
+  const payload = buildTweetMessage(tweet, { tier: 'routine', reasons: [] });
+  assert.equal(payload.text, '@somedev replied to @entirehq');
+});
+
+test('routine and priority render structurally different blocks', () => {
+  const priority = buildTweetMessage(tweet, { tier: 'priority', reasons: ['question'] });
+  const routine = buildTweetMessage(tweet, { tier: 'routine', reasons: ['question'] });
+  // A skimming reader must be able to tell them apart without reading either.
+  assert.equal(priority.blocks[0].type, 'section');
+  assert.equal(routine.blocks[0].type, 'context');
+  assert.equal(routine.blocks.length, 1);
+});
+
+test('a priority card shows reach and the triage reasons', () => {
+  const payload = buildTweetMessage(
+    { ...tweet, followers: 17388 },
+    { tier: 'priority', reasons: ['17k followers', 'question'] },
+  );
+  const context = payload.blocks[1].elements[0].text;
+  assert.match(context, /17k followers/);
+  assert.match(context, /question/);
+});
+
+test('reach is omitted rather than shown as zero when unknown', () => {
+  const payload = buildTweetMessage({ ...tweet, followers: null }, { tier: 'priority', reasons: [] });
+  assert.doesNotMatch(JSON.stringify(payload), /followers/);
+});
+
+test('a routine line still escapes user content', () => {
+  const payload = buildTweetMessage(
+    { ...tweet, text: '<https://evil.example|click me>' },
+    { tier: 'routine', reasons: [] },
+  );
+  assert.match(JSON.stringify(payload), /&lt;https:\/\/evil\.example/);
+  assert.doesNotMatch(JSON.stringify(payload), /\|click me>/);
 });
 
 test('buildTweetMessage escapes user content so a tweet cannot forge markup', () => {
@@ -84,35 +122,44 @@ test('buildAlertMessage produces a usable payload', () => {
   assert.ok(Array.isArray(payload.blocks) && payload.blocks.length > 0);
 });
 
-test('postToSlack posts the payload and reports success', async () => {
+test('postToSlack posts the payload and reports success', async (t) => {
   const hook = await stubWebhook([200]);
+  t.after(() => hook.close());
   const result = await postToSlack(hook.url, buildTweetMessage(tweet));
   assert.deepEqual({ ok: result.ok, attempts: result.attempts }, { ok: true, attempts: 1 });
   assert.equal(hook.received.length, 1);
-  assert.equal(hook.received[0].text, '@somedev replied to @entirehq');
-  await hook.close();
+  assert.equal(hook.received[0].text, '\u2605 @somedev replied to @entirehq');
 });
 
-test('postToSlack retries exactly once after a server error, then succeeds', async () => {
+test('postToSlack retries exactly once after a server error, then succeeds', async (t) => {
   const hook = await stubWebhook([500, 200]);
+  t.after(() => hook.close());
   const result = await postToSlack(hook.url, buildTweetMessage(tweet), { retryDelayMs: 1 });
   assert.equal(result.ok, true);
   assert.equal(result.attempts, 2);
   assert.equal(hook.received.length, 2);
-  await hook.close();
 });
 
-test('postToSlack gives up after the retry and resolves ok:false', async () => {
+test('postToSlack gives up after the retry and resolves ok:false', async (t) => {
   const hook = await stubWebhook([500, 500]);
+  t.after(() => hook.close());
   const result = await postToSlack(hook.url, buildTweetMessage(tweet), { retryDelayMs: 1 });
   assert.equal(result.ok, false);
   assert.equal(result.status, 500);
   assert.equal(result.attempts, 2);
-  await hook.close();
 });
 
 test('postToSlack resolves ok:false on a network error instead of throwing', async () => {
   const result = await postToSlack('http://127.0.0.1:1/hook', { text: 'x' }, { retryDelayMs: 1 });
   assert.equal(result.ok, false);
   assert.equal(result.attempts, 2);
+});
+
+test('reach is not printed twice when a reason already names it', () => {
+  const payload = buildTweetMessage(
+    { ...tweet, followers: 17388 },
+    { tier: 'priority', reasons: ['17k followers', 'not a follower'] },
+  );
+  const context = payload.blocks[1].elements[0].text;
+  assert.equal(context.match(/17k followers/g).length, 1);
 });

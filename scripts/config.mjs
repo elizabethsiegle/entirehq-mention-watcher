@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { parseHandleList } from './score.mjs';
 import { join } from 'node:path';
 
 const REQUIRED = [
@@ -55,6 +56,11 @@ export function loadConfig(env = process.env) {
     .toLowerCase();
 
   return {
+    // Optional. Without it the LLM triage is skipped and the deterministic
+    // score decides tiers alone, which is a supported mode, not a failure.
+    anthropicApiKey: present(env.ANTHROPIC_API_KEY) ? env.ANTHROPIC_API_KEY.trim() : null,
+    mutedHandles: parseHandleList(env.X_MUTE_HANDLES),
+    teamHandles: parseHandleList(env.X_TEAM_HANDLES),
     browserbaseApiKey: env.BROWSERBASE_API_KEY.trim(),
     browserbaseProjectId: env.BROWSERBASE_PROJECT_ID.trim(),
     xAuthToken: env.X_AUTH_TOKEN.trim(),
