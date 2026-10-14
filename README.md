@@ -8,17 +8,19 @@ minutes, triages every new mention, and posts it to Slack in one of two
 shapes so the ones worth acting on do not read like the rest.
 
 ```
-★ @HaimantikaM replied to @entirehq
+★ `REPLY` @HaimantikaM · 17k followers
 > Great points! We are also building something for this, would
 > love to give you early access.
-View on X · reply · 17k followers · not a follower, offers early access
+View on X · not a follower, offers early access · Oct 14 at 11:57 AM
 
-@devsdv_ · @haatifff @neatlogs @EntireHQ Thanks 👍 · open · reply · 172 followers
+`REPLY` @devsdv_ · @haatifff @neatlogs @EntireHQ Thanks 👍 · open · 172 followers
 ```
 
 Priority gets a card and a `★` in the notification text; routine collapses to
-one line. On a live sample of 20 mentions this put 1 in priority and 16 in
-routine, with 3 muted.
+one line. Every line leads with its kind in the same slot (`TWEET`, `REPLY`,
+`QUOTE`), so the left edge answers "reply or tweet?" without reading the line.
+On a live sample of 20 mentions this put 1 in priority and 16 in routine, with
+3 muted.
 
 It runs as a launchd agent — at login, across reboots, restarted if it dies,
 independent of whether Claude Code is open. Zero tokens: a plain Node process

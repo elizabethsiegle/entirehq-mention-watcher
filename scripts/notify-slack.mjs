@@ -31,25 +31,36 @@ function reach(tweet) {
 function meta(tweet, triage) {
   const r = reach(tweet);
   const reasons = (triage?.reasons ?? []).filter((x) => x !== r);
-  return [tweet.kind, r, reasons.slice(0, 3).join(', ') || null]
-    .filter(Boolean)
-    .join(' \u00b7 ');
+  return reasons.slice(0, 3).join(', ') || tweet.kind;
 }
 
 // Priority gets the full card and a leading marker; routine collapses to one
 // line. The whole point of the split is that a skimming reader can tell them
 // apart without reading either, so the shapes must differ, not just the words.
+// The kind leads every line, in the same slot on both tiers, so scanning the
+// left edge answers "reply or tweet?" without reading the line. It used to sit
+// mid-chain in the trailing metadata, where it was effectively invisible.
+const KIND_LABEL = {
+  mention: 'TWEET',
+  reply: 'REPLY',
+  quote: 'QUOTE',
+};
+
+export function kindLabel(kind) {
+  return KIND_LABEL[kind] ?? 'TWEET';
+}
+
 export function buildTweetMessage(tweet, triage = null) {
   const verb = VERB[tweet.kind] ?? 'mentioned';
   const epoch = Math.floor(new Date(tweet.createdAt).getTime() / 1000);
   const handle = escapeSlack(tweet.author);
   const profile = `https://x.com/${encodeURIComponent(tweet.author)}`;
+  const label = kindLabel(tweet.kind);
+  const r = reach(tweet);
 
   if (triage && triage.tier === 'routine') {
-    const r = reach(tweet);
-    const tail = [tweet.kind, r].filter(Boolean).join(' \u00b7 ');
     return {
-      text: `@${handle} ${verb} @entirehq`,
+      text: `${label} \u00b7 @${handle} ${verb} @entirehq`,
       blocks: [
         {
           type: 'context',
@@ -57,8 +68,9 @@ export function buildTweetMessage(tweet, triage = null) {
             {
               type: 'mrkdwn',
               text:
-                `<${profile}|@${handle}> \u00b7 ${escapeSlack(body(tweet.text).slice(0, 140))} ` +
-                `\u00b7 <${tweet.url}|open> \u00b7 ${tail}`,
+                `\`${label}\` <${profile}|@${handle}> \u00b7 ` +
+                `${escapeSlack(body(tweet.text).slice(0, 140))} \u00b7 ` +
+                [`<${tweet.url}|open>`, r].filter(Boolean).join(' \u00b7 '),
             },
           ],
         },
@@ -67,15 +79,16 @@ export function buildTweetMessage(tweet, triage = null) {
   }
 
   return {
-    text: `\u2605 @${handle} ${verb} @entirehq`,
+    text: `\u2605 ${label} \u00b7 @${handle} ${verb} @entirehq`,
     blocks: [
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
           text:
-            `*\u2605 <${profile}|@${handle}>* ${verb} @entirehq\n` +
-            `>${escapeSlack(body(tweet.text))}`,
+            `*\u2605 \`${label}\`* <${profile}|@${handle}>` +
+            (r ? ` \u00b7 ${r}` : '') +
+            `\n>${escapeSlack(body(tweet.text))}`,
         },
       },
       {
