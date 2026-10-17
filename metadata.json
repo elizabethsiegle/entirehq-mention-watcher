@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M544MFFMQJD3676KT1NPNPXQ",
+  "strategy": "manual-commit",
+  "branch": "feat/watch-entire-io-links",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".env.example",
+    "README.md",
+    "scripts/check.mjs",
+    "scripts/classify.mjs",
+    "scripts/config.mjs",
+    "scripts/filter.mjs",
+    "scripts/notify-slack.mjs",
+    "scripts/notify-terminal.mjs",
+    "scripts/parse.mjs",
+    "scripts/preview.mjs",
+    "scripts/watch.mjs",
+    "scripts/x-scrape.mjs",
+    "test/config.test.mjs",
+    "test/filter.test.mjs",
+    "test/notify-slack.test.mjs",
+    "test/parse-dom.test.mjs",
+    "test/parse-json.test.mjs",
+    "test/triage.test.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 86,
+    "cache_creation_tokens": 131795,
+    "cache_read_tokens": 5036941,
+    "output_tokens": 44673,
+    "api_call_count": 43
+  }
+}
