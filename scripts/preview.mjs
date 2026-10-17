@@ -17,11 +17,12 @@ try {
 
 const { mutedHandles, teamHandles } = config;
 const { source, tweets } = await scrapeSearch(config);
-const classified = filterAndClassify(tweets, config.ownHandle);
+const classified = filterAndClassify(tweets, config);
 const client = createClient(config.anthropicApiKey);
 
 console.log(
-  `source=${source} tweets=${classified.length} ` +
+  `query=${config.searchQuery}\n` +
+    `source=${source} tweets=${classified.length} ` +
     `muted=[${mutedHandles.join(',') || '-'}] team=[${teamHandles.join(',') || '-'}] ` +
     `classifier=${client ? 'on' : 'off'}\n`,
 );
@@ -44,7 +45,8 @@ for (const { tweet, decision, verdict } of rows) {
   const llm = (verdict?.ok ? verdict.tier : 'n/a').padEnd(8);
   console.log(
     `${mark} ${decision.tier.padEnd(8)} score=${String(decision.score).padStart(2)} llm=${llm} ` +
-      `@${tweet.author.padEnd(17)} f=${String(tweet.followers ?? '?').padStart(6)} ` +
+      `@${tweet.author.padEnd(17)} via=${tweet.matchedVia.padEnd(6)} ` +
+      `f=${String(tweet.followers ?? '?').padStart(6)} ` +
       tweet.text.replace(/\s+/g, ' ').slice(0, 56),
   );
   if (verdict?.ok && verdict.reason) console.log(`${' '.repeat(15)}${verdict.reason}`);

@@ -107,7 +107,10 @@ async function announce(tweet) {
     verdict,
   });
 
-  const result = await postToSlack(config.slackWebhookUrl, buildTweetMessage(tweet, decision));
+  const result = await postToSlack(
+    config.slackWebhookUrl,
+    buildTweetMessage(tweet, decision, { handle: config.ownHandle, domain: config.brandDomain }),
+  );
   const label = `${decision.tier}${decision.tier === PRIORITY ? ' \u2605' : ''} score=${decision.score}`;
   if (result.ok) {
     logLine(`slack ok [${label}]: @${tweet.author} ${tweet.kind} ${tweet.url}`);
@@ -182,7 +185,7 @@ async function pollOnce() {
     );
   }
 
-  const classified = filterAndClassify(tweets, config.ownHandle);
+  const classified = filterAndClassify(tweets, config);
   const { isBaseline, fresh, store: nextStore } = diffSeen(store, classified);
 
   if (isBaseline) {
@@ -228,6 +231,7 @@ function backoffMs() {
 
 async function loop() {
   logLine(`watcher started — polling every ${Math.round(config.pollMs / 1000)}s — slack-only — ${projectDir}`);
+  logLine(`search query: ${config.searchQuery}`);
 
   while (!stopped) {
     let waitMs;

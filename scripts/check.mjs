@@ -27,8 +27,10 @@ try {
     process.exit(1);
   }
 
-  const classified = filterAndClassify(tweets, config.ownHandle);
+  const classified = filterAndClassify(tweets, config);
   printQuiet(`${tweets.length} tweets scraped, ${classified.length} after filtering out @${config.ownHandle}`);
+  const byLink = classified.filter((t) => t.matchedVia !== 'handle').length;
+  printQuiet(`${byLink} of them matched on a ${config.brandDomain} link`);
 
   if (classified.length === 0) {
     printWarning('No tweets found. Either the search is genuinely empty or extraction broke.');

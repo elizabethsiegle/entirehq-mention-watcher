@@ -36,6 +36,7 @@ test('parseTimelineJson maps a plain mention completely', () => {
     followers: null,
     followsUs: null,
     verified: false,
+    links: [],
     inReplyToStatusId: null,
     isQuoteStatus: false,
   });
@@ -140,4 +141,52 @@ test('parseTimelineJson dedupes a rest_id repeated across two TimelineAddEntries
     ['9990000000000000001', '9990000000000000002'],
     'the id repeated across both instructions must appear exactly once',
   );
+});
+
+test('parseTimelineJson recovers link destinations that full_text only shows as t.co', () => {
+  const payload = {
+    data: {
+      search_by_raw_query: {
+        search_timeline: {
+          timeline: {
+            instructions: [
+              {
+                type: 'TimelineAddEntries',
+                entries: [
+                  tweetEntry('9990000000000000003', {
+                    full_text: 'moved our repos over https://t.co/shortened',
+                    entities: {
+                      urls: [
+                        { expanded_url: 'https://entire.io/blog/why', display_url: 'entire.io/blog/why' },
+                      ],
+                    },
+                  }),
+                ],
+              },
+            ],
+          },
+        },
+      },
+    },
+  };
+
+  const [tweet] = parseTimelineJson(payload);
+  assert.deepEqual(tweet.links, ['https://entire.io/blog/why', 'entire.io/blog/why']);
+});
+
+test('parseTimelineJson emits an empty link list rather than undefined when entities are absent', () => {
+  const payload = {
+    data: {
+      search_by_raw_query: {
+        search_timeline: {
+          timeline: {
+            instructions: [
+              { type: 'TimelineAddEntries', entries: [tweetEntry('9990000000000000004', { entities: null })] },
+            ],
+          },
+        },
+      },
+    },
+  };
+  assert.deepEqual(parseTimelineJson(payload)[0].links, []);
 });

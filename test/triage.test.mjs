@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { scoreTweet, parseHandleList, PRIORITY_THRESHOLD } from '../scripts/score.mjs';
 import { triage, decideTier, PRIORITY, ROUTINE, MUTED } from '../scripts/tier.mjs';
+import { buildPrompt } from '../scripts/classify.mjs';
 
 function tweet(over = {}) {
   return {
@@ -128,4 +129,13 @@ test('a PRIORITY verdict still wins over a zero score', () => {
     { verdict: { ok: true, tier: 'PRIORITY', reason: 'support question' } },
   );
   assert.equal(r.tier, PRIORITY);
+});
+
+test('the classifier is told how the mention matched', () => {
+  // A link share is not addressed to us. Without this the model reads every
+  // post as if the author tagged the account and expects an answer.
+  assert.match(buildPrompt(tweet({ matchedVia: 'link' })), /^Matched: links the site/m);
+  assert.match(buildPrompt(tweet({ matchedVia: 'both' })), /^Matched: tags the account and links/m);
+  assert.match(buildPrompt(tweet({ matchedVia: 'handle' })), /^Matched: tags the account$/m);
+  assert.match(buildPrompt(tweet()), /^Matched: tags the account$/m);
 });

@@ -191,3 +191,68 @@ test('reach is not printed twice when a reason already names it', () => {
   ).join(' ');
   assert.equal(rendered.match(/17k followers/g).length, 1);
 });
+
+const linkOnly = {
+  ...tweet,
+  kind: 'mention',
+  matchedVia: 'link',
+  text: 'finally moved our repos off github https://t.co/abc',
+};
+
+test('a link-only share does not claim the author tagged us', () => {
+  // "replied to @entirehq" on a post that never tagged the account is a
+  // factual error in the one line a phone notification shows.
+  const payload = buildTweetMessage(linkOnly, { tier: 'priority', reasons: [] });
+  assert.equal(payload.text, '\u2605 TWEET \u00b7 @somedev linked entire.io');
+  assert.doesNotMatch(payload.text, /@entirehq/);
+});
+
+test('a link-only reply keeps its kind but still reports what it matched', () => {
+  const payload = buildTweetMessage(
+    { ...linkOnly, kind: 'reply' },
+    { tier: 'routine', reasons: [] },
+  );
+  assert.equal(payload.text, 'REPLY \u00b7 @somedev linked entire.io');
+});
+
+test('a post that both tags and links reads as a mention and says it linked too', () => {
+  const payload = buildTweetMessage(
+    { ...linkOnly, matchedVia: 'both', kind: 'reply' },
+    { tier: 'routine', reasons: [] },
+  );
+  assert.equal(payload.text, 'REPLY \u00b7 @somedev replied to @entirehq');
+  assert.match(payload.blocks[0].elements[0].text, /links entire\.io/);
+});
+
+test('both tiers show the link tag in the channel, not just in the notification', () => {
+  const priority = buildTweetMessage(linkOnly, { tier: 'priority', reasons: ['question'] });
+  const routine = buildTweetMessage(linkOnly, { tier: 'routine', reasons: ['question'] });
+  assert.match(priority.blocks[1].elements[0].text, /links entire\.io/);
+  assert.match(routine.blocks[0].elements[0].text, /links entire\.io/);
+});
+
+test('a handle match carries no link tag', () => {
+  const payload = buildTweetMessage(
+    { ...tweet, matchedVia: 'handle' },
+    { tier: 'routine', reasons: [] },
+  );
+  assert.doesNotMatch(payload.blocks[0].elements[0].text, /links/);
+});
+
+test('the brand names come from config, so a rename cannot leave stale text behind', () => {
+  const brand = { handle: 'acmehq', domain: 'acme.dev' };
+  assert.equal(
+    buildTweetMessage(linkOnly, { tier: 'routine', reasons: [] }, brand).text,
+    'TWEET \u00b7 @somedev linked acme.dev',
+  );
+  assert.equal(
+    buildTweetMessage({ ...tweet, matchedVia: 'handle' }, { tier: 'routine', reasons: [] }, brand).text,
+    'REPLY \u00b7 @somedev replied to @acmehq',
+  );
+});
+
+test('a tweet with no match attribution still renders the pre-existing wording', () => {
+  // Nothing persisted carries matchedVia, so a record read back from an older
+  // store must not render as a link share.
+  assert.equal(buildTweetMessage(tweet).text, '\u2605 REPLY \u00b7 @somedev replied to @entirehq');
+});

@@ -29,6 +29,7 @@ test('parseDomRecords normalizes handle and rebuilds a canonical url', () => {
     text: 'hey @entirehq does this work with self-hosted runners?',
     url: 'https://x.com/somedev/status/1958000000000000001',
     createdAt: '2026-08-18T14:02:11.000Z',
+    links: [],
     inReplyToStatusId: null,
     isQuoteStatus: false,
   });
@@ -62,4 +63,29 @@ test('parseDomRecords returns [] for junk input instead of throwing', () => {
   assert.deepEqual(parseDomRecords(null), []);
   assert.deepEqual(parseDomRecords([]), []);
   assert.deepEqual(parseDomRecords([{}, null, 'nope']), []);
+});
+
+test('parseDomRecords keeps the link display text, which is all the DOM shows', () => {
+  const [tweet] = parseDomRecords([
+    {
+      permalink: '/somedev/status/1958000000000000099',
+      handle: '@somedev',
+      text: 'this is the one',
+      datetime: '2026-08-18T14:02:11.000Z',
+      links: ['entire.io/blog/why…', '', 42],
+    },
+  ]);
+  assert.deepEqual(tweet.links, ['entire.io/blog/why…']);
+});
+
+test('parseDomRecords tolerates a record with no links at all', () => {
+  const [tweet] = parseDomRecords([
+    {
+      permalink: '/somedev/status/1958000000000000098',
+      handle: '@somedev',
+      text: 'no links here',
+      datetime: '2026-08-18T14:02:11.000Z',
+    },
+  ]);
+  assert.deepEqual(tweet.links, []);
 });

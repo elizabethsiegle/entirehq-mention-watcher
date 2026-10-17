@@ -2,7 +2,9 @@ import Anthropic from '@anthropic-ai/sdk';
 
 export const MODEL = 'claude-haiku-5-5';
 
-const SYSTEM = `You triage public X/Twitter mentions of @entirehq, a git hosting platform built for AI coding agents, founded by GitHub's former CEO.
+const SYSTEM = `You triage public X/Twitter mentions of @entirehq, a git hosting platform built for AI coding agents, founded by GitHub's former CEO. Its site is entire.io.
+
+A mention reaches you either because it tags the account or because it links the site. A post that links entire.io without tagging @entirehq is a real mention. Judge it on the same terms, and remember the author is not expecting a reply.
 
 Judge whether the @entirehq team should act on a mention right now. Act means: reply, repost, or route it to someone internally.
 
@@ -27,10 +29,17 @@ const TOOL = {
   },
 };
 
+const MATCHED = {
+  handle: 'tags the account',
+  link: 'links the site, does not tag the account',
+  both: 'tags the account and links the site',
+};
+
 export function buildPrompt(tweet) {
   return [
     `Author: @${tweet.author}`,
     `Kind: ${tweet.kind}`,
+    `Matched: ${MATCHED[tweet.matchedVia] ?? MATCHED.handle}`,
     `Text: ${tweet.text}`,
   ].join('\n');
 }

@@ -38,6 +38,21 @@ function authorSignal(tweet) {
   };
 }
 
+// X rewrites every link in `full_text` to a t.co shortlink, so the real
+// destination survives only in the entities block. Reading it is what lets a
+// post that links the site but never tags the account be recognized as one.
+function linksOf(legacy) {
+  const urls = legacy?.entities?.urls;
+  if (!Array.isArray(urls)) return [];
+  const links = [];
+  for (const url of urls) {
+    for (const value of [url?.expanded_url, url?.display_url]) {
+      if (typeof value === 'string' && value) links.push(value);
+    }
+  }
+  return links;
+}
+
 function entriesOf(payload) {
   const instructions =
     payload?.data?.search_by_raw_query?.search_timeline?.timeline?.instructions;
@@ -86,6 +101,7 @@ export function parseTimelineJson(payload) {
       text: legacy.full_text ?? '',
       url: `https://x.com/${author}/status/${id}`,
       createdAt,
+      links: linksOf(legacy),
       inReplyToStatusId: legacy.in_reply_to_status_id_str ?? null,
       isQuoteStatus: Boolean(legacy.is_quote_status),
       ...authorSignal(tweet),
@@ -129,6 +145,9 @@ export function parseDomRecords(records) {
       text: typeof record.text === 'string' ? record.text : '',
       url: `https://x.com/${author}/status/${id}`,
       createdAt,
+      // The DOM shows a link as its display text ("entire.io/blog/…"), which
+      // is the only form of the destination this path can see.
+      links: Array.isArray(record.links) ? record.links.filter((l) => typeof l === 'string' && l) : [],
       inReplyToStatusId: record.hasReplyingTo ? UNKNOWN_PARENT : null,
       isQuoteStatus: Boolean(record.hasQuotedTweet),
     });

@@ -1,8 +1,14 @@
+import { MATCH_LINK, MATCH_BOTH } from './filter.mjs';
+
 const VERB = {
   mention: 'mentioned',
   reply: 'replied to',
   quote: 'quoted',
 };
+
+// Only used by callers that have no config in hand (the tests). The watcher
+// passes the live values, so a renamed account or domain cannot drift.
+const BRAND = { handle: 'entirehq', domain: 'entire.io' };
 
 const MAX_BODY = 500;
 
@@ -50,17 +56,32 @@ export function kindLabel(kind) {
   return KIND_LABEL[kind] ?? 'TWEET';
 }
 
-export function buildTweetMessage(tweet, triage = null) {
-  const verb = VERB[tweet.kind] ?? 'mentioned';
+// What the post did to us. A link-only share never tagged the account, so the
+// reply/quote verb would misreport it: the kind label already carries whether
+// it was a reply, and the verb slot has to say what it matched on instead.
+function action(tweet, brand) {
+  if (tweet.matchedVia === MATCH_LINK) return `linked ${brand.domain}`;
+  return `${VERB[tweet.kind] ?? 'mentioned'} @${brand.handle}`;
+}
+
+function linkTag(tweet, brand) {
+  return tweet.matchedVia === MATCH_LINK || tweet.matchedVia === MATCH_BOTH
+    ? `links ${brand.domain}`
+    : null;
+}
+
+export function buildTweetMessage(tweet, triage = null, brand = BRAND) {
+  const did = action(tweet, brand);
   const epoch = Math.floor(new Date(tweet.createdAt).getTime() / 1000);
   const handle = escapeSlack(tweet.author);
   const profile = `https://x.com/${encodeURIComponent(tweet.author)}`;
   const label = kindLabel(tweet.kind);
   const r = reach(tweet);
+  const tag = linkTag(tweet, brand);
 
   if (triage && triage.tier === 'routine') {
     return {
-      text: `${label} \u00b7 @${handle} ${verb} @entirehq`,
+      text: `${label} \u00b7 @${handle} ${did}`,
       blocks: [
         {
           type: 'context',
@@ -70,7 +91,7 @@ export function buildTweetMessage(tweet, triage = null) {
               text:
                 `\`${label}\` <${profile}|@${handle}> \u00b7 ` +
                 `${escapeSlack(body(tweet.text).slice(0, 140))} \u00b7 ` +
-                [`<${tweet.url}|open>`, r].filter(Boolean).join(' \u00b7 '),
+                [`<${tweet.url}|open>`, r, tag].filter(Boolean).join(' \u00b7 '),
             },
           ],
         },
@@ -79,7 +100,7 @@ export function buildTweetMessage(tweet, triage = null) {
   }
 
   return {
-    text: `\u2605 ${label} \u00b7 @${handle} ${verb} @entirehq`,
+    text: `\u2605 ${label} \u00b7 @${handle} ${did}`,
     blocks: [
       {
         type: 'section',
@@ -96,9 +117,14 @@ export function buildTweetMessage(tweet, triage = null) {
         elements: [
           {
             type: 'mrkdwn',
-            text:
-              `<${tweet.url}|View on X> \u00b7 ${escapeSlack(meta(tweet, triage))} \u00b7 ` +
+            text: [
+              `<${tweet.url}|View on X>`,
+              escapeSlack(meta(tweet, triage)),
+              tag,
               `<!date^${epoch}^{date_short_pretty} at {time}|${tweet.createdAt}>`,
+            ]
+              .filter(Boolean)
+              .join(' \u00b7 '),
           },
         ],
       },
