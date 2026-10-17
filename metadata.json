@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M5456P9AE50VK3GFBJA70CFC",
+  "strategy": "manual-commit",
+  "branch": "feat/collapse-reply-chains",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".env.example",
+    "README.md",
+    "scripts/chain.mjs",
+    "scripts/config.mjs",
+    "scripts/filter.mjs",
+    "scripts/notify-slack.mjs",
+    "scripts/parse.mjs",
+    "scripts/preview.mjs",
+    "scripts/store.mjs",
+    "scripts/watch.mjs",
+    "test/chain.test.mjs",
+    "test/config.test.mjs",
+    "test/filter.test.mjs",
+    "test/notify-slack.test.mjs",
+    "test/parse-dom.test.mjs",
+    "test/parse-json.test.mjs",
+    "test/store.test.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 46,
+    "cache_creation_tokens": 44707,
+    "cache_read_tokens": 4222199,
+    "output_tokens": 36735,
+    "api_call_count": 23
+  }
+}
