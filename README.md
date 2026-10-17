@@ -16,10 +16,12 @@ rest.
 View on X · not a follower, offers early access · Oct 14 at 11:57 AM
 
 `REPLY` @devsdv_ · @haatifff @neatlogs @EntireHQ Thanks 👍 · open · 172 followers
+
+`CHAIN` 9 more replies in this thread · @Archilyte_, @j3rah_, @catmanyau, +4 · open
 ```
 
 Priority gets a card and a `★` in the notification text; routine collapses to
-one line. Every line leads with its kind in the same slot (`TWEET`, `REPLY`,
+one line, and a thread that keeps going collapses to a count. Every line leads with its kind in the same slot (`TWEET`, `REPLY`,
 `QUOTE`), so the left edge answers "reply or tweet?" without reading the line.
 A post that linked the site without tagging the account reads `linked
 entire.io` instead of `replied to @entirehq`, because it did not.
@@ -47,7 +49,8 @@ npm run install-agent      # install + start the daemon
 | `X_CSRF_TOKEN` | same place → `ct0` |
 | `SLACK_WEBHOOK_URL` | api.slack.com/apps → your app → Incoming Webhooks |
 
-Optional: `X_WATCH_POLL_MS` (`300000`), `X_OWN_HANDLE` (`entirehq`),
+Optional: `X_WATCH_POLL_MS` (`300000`), `X_CHAIN_LIMIT` (`3`),
+`X_OWN_HANDLE` (`entirehq`),
 `X_BRAND_DOMAIN` (`entire.io`), `X_SEARCH_QUERY` (defaults to
 `(@entirehq OR "entire.io")`, built from the two above),
 `ANTHROPIC_API_KEY`, `X_MUTE_HANDLES`, `X_TEAM_HANDLES`.
@@ -89,6 +92,17 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
   `full_text` to `t.co`, so the domain can only be matched against the
   expanded URLs in `entities.urls` (the link's display text, on the DOM
   fallback path). Matching the text alone would have found nothing.
+- **A thread gets a budget, not a line per reply.** One account thanking
+  twelve people one reply at a time is twelve mentions and one thread. The
+  first `X_CHAIN_LIMIT` routine mentions from a thread post normally; the rest
+  collapse into a single `CHAIN` line naming who is in it. The budget is
+  charged in the store and lasts six hours, so a thread that drips in two
+  replies per poll cannot restart it every five minutes. Priority is never
+  collapsed and never charged: a quiet channel is worth less than one
+  actionable mention.
+- **Collapsing happens after triage, not before.** The tier has to be known
+  first or a real support question could disappear into a count. It costs
+  nothing extra: every new mention was already being classified one at a time.
 - **Two signals decide the tier, and they answer different questions.** A
   deterministic score measures reach (follower count, whether the author
   already follows `@entirehq`, verified, question, quote vs deep reply,
@@ -130,6 +144,14 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
   quoted phrase, so a post that writes "entire dot io", links a shortener, or
   embeds the URL in an image is not found. Neither is one whose link X has
   not indexed yet.
+- **A collapsed reply is never shown again.** The `CHAIN` line is its only
+  delivery: it is marked seen once that line lands, so the text of a routine
+  reply past the budget lives on X and nowhere else. The thread link is in the
+  line for exactly that reason.
+- **Threads are only groupable on the JSON path.** `conversation_id_str` does
+  not exist in the rendered page, so under the DOM fallback a chain is grouped
+  by author instead. One account replying repeatedly still collapses; three
+  accounts piling into one thread do not.
 - **Muting is by handle, not by person.** `X_OWN_HANDLE` drops the brand
   account, `X_MUTE_HANDLES` drops named accounts entirely, and
   `X_TEAM_HANDLES` pins teammates to the routine tier (their replies are a
@@ -147,7 +169,7 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
 | `npm run uninstall-agent` | Stop and remove it; hooks take over again |
 | `npm run preview` | Triages one live scrape and prints the tiers. Posts nothing |
 | `npm run check` | One live scrape, dry-run, notifies nobody |
-| `npm test` | 149 tests: config, both parsers, filter, store, notifiers, launchd, triage |
+| `npm test` | 181 tests: config, both parsers, filter, store, notifiers, launchd, triage, chains |
 | `tail -f .claude/entirehq-watcher/watch.log` | What the daemon is doing |
 
 One Browserbase session per poll — 288/day at the default, now continuous
@@ -167,6 +189,7 @@ calls a day at current volume, cents a month.
 | `scripts/score.mjs` | Deterministic reach/shape score and handle lists. Pure |
 | `scripts/classify.mjs` | Claude Haiku intent triage; resolves, never throws |
 | `scripts/tier.mjs` | Combines score and verdict into a tier. Pure |
+| `scripts/chain.mjs` | Groups a batch by thread and spends the per-thread budget. Pure |
 | `scripts/notify-slack.mjs` | Tiered Block Kit payloads, webhook POST, one retry |
 | `scripts/preview.mjs` | Dry-run triage of one live scrape |
 | `scripts/notify-terminal.mjs` | ANSI output — `check.mjs` only |

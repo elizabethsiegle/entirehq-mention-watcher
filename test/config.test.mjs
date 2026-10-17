@@ -24,6 +24,18 @@ test('loadConfig applies documented defaults', () => {
   assert.equal(cfg.pollMs, 300000);
   assert.equal(cfg.ownHandle, 'entirehq');
   assert.equal(cfg.brandDomain, 'entire.io');
+  assert.equal(cfg.chainLimit, 3);
+});
+
+test('loadConfig accepts a thread budget of zero, which collapses every chain', () => {
+  assert.equal(loadConfig({ ...complete, X_CHAIN_LIMIT: '0' }).chainLimit, 0);
+  assert.equal(loadConfig({ ...complete, X_CHAIN_LIMIT: '7' }).chainLimit, 7);
+});
+
+test('loadConfig rejects a thread budget that is not a whole, non-negative number', () => {
+  assert.throws(() => loadConfig({ ...complete, X_CHAIN_LIMIT: '-1' }), /X_CHAIN_LIMIT/);
+  assert.throws(() => loadConfig({ ...complete, X_CHAIN_LIMIT: '2.5' }), /X_CHAIN_LIMIT/);
+  assert.throws(() => loadConfig({ ...complete, X_CHAIN_LIMIT: 'lots' }), /X_CHAIN_LIMIT/);
 });
 
 test('the default search asks for the handle and the site in one query', () => {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import {
   buildTweetMessage,
+  buildChainMessage,
   kindLabel,
   buildAlertMessage,
   escapeSlack,
@@ -255,4 +256,42 @@ test('a tweet with no match attribution still renders the pre-existing wording',
   // Nothing persisted carries matchedVia, so a record read back from an older
   // store must not render as a link share.
   assert.equal(buildTweetMessage(tweet).text, '\u2605 REPLY \u00b7 @somedev replied to @entirehq');
+});
+
+test('a collapsed chain is one line that says how many it stands for', () => {
+  const payload = buildChainMessage({
+    count: 9,
+    authors: ['Archilyte_', 'jennyoliver57', 'j3rah_'],
+    moreAuthors: 4,
+    url: 'https://x.com/Archilyte_/status/2111065254491000840',
+  });
+  assert.equal(payload.text, 'CHAIN \u00b7 9 more replies in this thread');
+  assert.equal(payload.blocks.length, 1);
+  assert.equal(payload.blocks[0].type, 'context');
+  const line = payload.blocks[0].elements[0].text;
+  assert.match(line, /^`CHAIN` 9 more replies in this thread/);
+  assert.match(line, /@Archilyte_, @jennyoliver57, @j3rah_, \+4/);
+  assert.ok(line.includes('<https://x.com/Archilyte_/status/2111065254491000840|open>'));
+});
+
+test('a collapsed chain of one reads as one reply, not one replies', () => {
+  const payload = buildChainMessage({ count: 1, authors: ['ann'], moreAuthors: 0, url: 'https://x.com/ann/status/1' });
+  assert.equal(payload.text, 'CHAIN \u00b7 1 more reply in this thread');
+});
+
+test('a collapsed chain names nobody rather than rendering an empty slot', () => {
+  const line = buildChainMessage({ count: 2, authors: [], moreAuthors: 0, url: 'https://x.com/a/status/1' })
+    .blocks[0].elements[0].text;
+  assert.doesNotMatch(line, /\u00b7\s+\u00b7/);
+});
+
+test('a chain summary escapes handles so a chain line cannot forge markup either', () => {
+  const line = buildChainMessage({
+    count: 2,
+    authors: ['<https://evil.example|click me>'],
+    moreAuthors: 0,
+    url: 'https://x.com/a/status/1',
+  }).blocks[0].elements[0].text;
+  assert.match(line, /&lt;https:\/\/evil\.example/);
+  assert.doesNotMatch(line, /\|click me>/);
 });

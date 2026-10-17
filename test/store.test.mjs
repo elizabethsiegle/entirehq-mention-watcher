@@ -11,11 +11,16 @@ import {
   setLoginWallAlerted,
   setBackoffAlerted,
   setEmptyResultsAlerted,
+  chainCounts,
+  recordChainPost,
   MAX_SEEN,
+  MAX_CHAINS,
+  CHAIN_WINDOW_MS,
 } from '../scripts/store.mjs';
 
 const EMPTY_STORE = {
   seen: [],
+  chains: {},
   baselined: false,
   loginWallAlerted: false,
   backoffAlerted: false,
@@ -67,6 +72,7 @@ test('saveStore then loadStore round-trips loginWallAlerted, backoffAlerted, and
   const dir = join(mkdtempSync(join(tmpdir(), 'store-')), 'nested');
   const full = {
     seen: ['a'],
+    chains: {},
     baselined: true,
     loginWallAlerted: true,
     backoffAlerted: true,
@@ -213,4 +219,72 @@ test('the alert setters can be turned back off and preserve the rest of the stor
   assert.equal(result.baselined, true);
   assert.equal(result.backoffAlerted, true);
   assert.equal(result.emptyResultsAlerted, true);
+});
+
+const NOW = Date.UTC(2026, 9, 17, 12, 0, 0);
+
+test('a store with no history has spent no thread budget', () => {
+  assert.deepEqual(chainCounts(EMPTY_STORE, NOW), {});
+  assert.deepEqual(chainCounts({}, NOW), {});
+  assert.deepEqual(chainCounts(null, NOW), {});
+});
+
+test('recordChainPost charges one post to a thread and keeps counting from the first', () => {
+  const once = recordChainPost(EMPTY_STORE, 'thread:a', NOW);
+  const twice = recordChainPost(once, 'thread:a', NOW + 60000);
+  assert.deepEqual(chainCounts(twice, NOW + 60000), { 'thread:a': 2 });
+  assert.equal(twice.chains['thread:a'].firstAt, NOW, 'the window starts at the first post, not the last');
+});
+
+test('recordChainPost leaves the store it was given alone', () => {
+  const before = recordChainPost(EMPTY_STORE, 'thread:a', NOW);
+  const snapshot = JSON.stringify(before);
+  recordChainPost(before, 'thread:a', NOW);
+  assert.equal(JSON.stringify(before), snapshot);
+});
+
+test('a thread that went quiet past the window starts fresh', () => {
+  const old = recordChainPost(EMPTY_STORE, 'thread:a', NOW - CHAIN_WINDOW_MS - 1);
+  assert.deepEqual(chainCounts(old, NOW), {}, 'an expired budget must not keep collapsing a thread forever');
+  assert.deepEqual(chainCounts(old, NOW - CHAIN_WINDOW_MS + 1000), { 'thread:a': 1 });
+});
+
+test('the chain table is capped, dropping the threads that started longest ago', () => {
+  let store = EMPTY_STORE;
+  for (let i = 0; i < MAX_CHAINS + 10; i++) store = recordChainPost(store, `thread:${i}`, NOW + i);
+  const counts = chainCounts(store, NOW + MAX_CHAINS + 10);
+  assert.equal(Object.keys(counts).length, MAX_CHAINS);
+  assert.ok(!counts['thread:0'], 'the oldest thread must be the one dropped');
+  assert.ok(counts[`thread:${MAX_CHAINS + 9}`], 'the newest thread must be kept');
+});
+
+test('thread budgets survive diffSeen and markSeen', () => {
+  const store = recordChainPost({ ...EMPTY_STORE, baselined: true }, 'thread:a', NOW);
+  assert.deepEqual(chainCounts(diffSeen(store, [tweet('1')]).store, NOW), { 'thread:a': 1 });
+  assert.deepEqual(chainCounts(markSeen(store, '1'), NOW), { 'thread:a': 1 });
+});
+
+test('thread budgets survive a save and load round trip', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'store-'));
+  saveStore(dir, recordChainPost({ ...EMPTY_STORE, baselined: true }, 'thread:a', NOW));
+  assert.deepEqual(chainCounts(loadStore(dir), NOW), { 'thread:a': 1 });
+});
+
+test('loadStore ignores a chain table that is the wrong shape instead of throwing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'store-'));
+  writeFileSync(
+    join(dir, 'seen.json'),
+    JSON.stringify({
+      seen: ['1'],
+      baselined: true,
+      chains: { ok: { count: 2, firstAt: NOW }, bad: { count: 'two' }, worse: null, zero: { count: 0, firstAt: NOW } },
+    }),
+  );
+  assert.deepEqual(chainCounts(loadStore(dir), NOW), { ok: 2 });
+});
+
+test('a chain table that is an array is read as no history at all', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'store-'));
+  writeFileSync(join(dir, 'seen.json'), JSON.stringify({ seen: [], baselined: true, chains: ['nope'] }));
+  assert.deepEqual(loadStore(dir).chains, {});
 });
