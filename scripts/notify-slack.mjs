@@ -132,6 +132,36 @@ export function buildTweetMessage(tweet, triage = null, brand = BRAND) {
   };
 }
 
+// The one line a thread gets once it is out of budget. It names who is in it
+// and where to open it; the posts themselves are routine by definition, so
+// the count is the information.
+export function buildChainMessage({ count, authors = [], moreAuthors = 0, url }) {
+  const noun = count === 1 ? 'reply' : 'replies';
+  const who = [
+    ...authors.map((author) => `@${escapeSlack(author)}`),
+    moreAuthors > 0 ? `+${moreAuthors}` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  return {
+    text: `CHAIN \u00b7 ${count} more ${noun} in this thread`,
+    blocks: [
+      {
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: [`\`CHAIN\` ${count} more ${noun} in this thread`, who, `<${url}|open>`]
+              .filter(Boolean)
+              .join(' \u00b7 '),
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export function buildAlertMessage(text) {
   return {
     text,

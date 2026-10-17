@@ -61,8 +61,8 @@ test('own-post matching ignores case and a leading @', () => {
 test('filterAndClassify emits exactly the Tweet fields, no raw leftovers', () => {
   const [t] = filterAndClassify([raw({ inReplyToStatusId: '999' })], BRAND);
   assert.deepEqual(Object.keys(t).sort(), [
-    'author', 'createdAt', 'followers', 'followsUs', 'id', 'kind', 'matchedVia', 'text', 'url',
-    'verified',
+    'author', 'conversationId', 'createdAt', 'followers', 'followsUs', 'id', 'kind', 'matchedVia',
+    'text', 'url', 'verified',
   ]);
 });
 
@@ -152,4 +152,11 @@ test('a result that shows neither signal is attributed to the handle', () => {
 test('match attribution survives a missing brand domain', () => {
   const [t] = filterAndClassify([raw({ links: ['entire.io/x'] })], { ownHandle: 'entirehq' });
   assert.equal(t.matchedVia, MATCH_HANDLE);
+});
+
+test('filterAndClassify carries the thread id through, and null when there is none', () => {
+  const [threaded] = filterAndClassify([raw({ conversationId: '777' })], BRAND);
+  assert.equal(threaded.conversationId, '777');
+  const [loose] = filterAndClassify([raw({})], BRAND);
+  assert.equal(loose.conversationId, null);
 });

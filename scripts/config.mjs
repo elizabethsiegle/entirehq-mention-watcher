@@ -50,6 +50,12 @@ export function loadConfig(env = process.env) {
     throw new Error(`X_WATCH_POLL_MS must be a positive number of milliseconds, got: ${pollRaw}`);
   }
 
+  const chainRaw = present(env.X_CHAIN_LIMIT) ? env.X_CHAIN_LIMIT.trim() : '3';
+  const chainLimit = Number(chainRaw);
+  if (!Number.isInteger(chainLimit) || chainLimit < 0) {
+    throw new Error(`X_CHAIN_LIMIT must be a whole number of posts per thread (0 or more), got: ${chainRaw}`);
+  }
+
   const ownHandle = (present(env.X_OWN_HANDLE) ? env.X_OWN_HANDLE.trim() : 'entirehq')
     .replace(/^@/, '')
     .toLowerCase();
@@ -78,6 +84,7 @@ export function loadConfig(env = process.env) {
     xCsrfToken: env.X_CSRF_TOKEN.trim(),
     slackWebhookUrl: env.SLACK_WEBHOOK_URL.trim(),
     pollMs,
+    chainLimit,
     searchQuery,
     ownHandle,
     brandDomain,

@@ -37,6 +37,7 @@ test('parseTimelineJson maps a plain mention completely', () => {
     followsUs: null,
     verified: false,
     links: [],
+    conversationId: null,
     inReplyToStatusId: null,
     isQuoteStatus: false,
   });
@@ -189,4 +190,30 @@ test('parseTimelineJson emits an empty link list rather than undefined when enti
     },
   };
   assert.deepEqual(parseTimelineJson(payload)[0].links, []);
+});
+
+test('parseTimelineJson carries the thread id, which is what groups a reply chain', () => {
+  const payload = {
+    data: {
+      search_by_raw_query: {
+        search_timeline: {
+          timeline: {
+            instructions: [
+              {
+                type: 'TimelineAddEntries',
+                entries: [
+                  tweetEntry('9990000000000000005', { conversation_id_str: '9980000000000000000' }),
+                  tweetEntry('9990000000000000006', { conversation_id_str: 42 }),
+                ],
+              },
+            ],
+          },
+        },
+      },
+    },
+  };
+
+  const [threaded, badShape] = parseTimelineJson(payload);
+  assert.equal(threaded.conversationId, '9980000000000000000');
+  assert.equal(badShape.conversationId, null, 'a non-string id must not reach the grouping key');
 });

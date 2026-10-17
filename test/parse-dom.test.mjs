@@ -30,6 +30,7 @@ test('parseDomRecords normalizes handle and rebuilds a canonical url', () => {
     url: 'https://x.com/somedev/status/1958000000000000001',
     createdAt: '2026-08-18T14:02:11.000Z',
     links: [],
+    conversationId: null,
     inReplyToStatusId: null,
     isQuoteStatus: false,
   });

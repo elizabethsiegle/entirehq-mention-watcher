@@ -3,6 +3,7 @@ import { scrapeSearch } from './x-scrape.mjs';
 import { filterAndClassify } from './filter.mjs';
 import { triage, MUTED, PRIORITY } from './tier.mjs';
 import { classify, createClient } from './classify.mjs';
+import { planAnnouncements, summarizeChain, chainIdOf } from './chain.mjs';
 import { printWarning } from './notify-terminal.mjs';
 
 loadEnvFile(getProjectDir());
@@ -54,4 +55,29 @@ for (const { tweet, decision, verdict } of rows) {
 
 const counts = rows.reduce((acc, r) => ({ ...acc, [r.decision.tier]: (acc[r.decision.tier] || 0) + 1 }), {});
 console.log(`\ntiers: ${JSON.stringify(counts)} | classifier calls: ${calls}`);
+
+// What Slack would actually receive. The budget starts empty here: preview
+// reads no store, so this is one poll on a quiet thread history, not what a
+// running watcher would do mid-flood.
+const plan = planAnnouncements(
+  rows.filter((r) => r.decision.tier !== MUTED).map(({ tweet, decision }) => ({ tweet, decision })),
+  { limit: config.chainLimit },
+);
+
+console.log(`\nslack lines: ${plan.length} (from ${rows.length} mentions, budget ${config.chainLimit}/thread)`);
+for (const item of plan) {
+  if (item.type === 'post') {
+    console.log(
+      `  ${item.decision.tier === PRIORITY ? '*' : ' '} @${item.tweet.author.padEnd(17)} ` +
+        `${chainIdOf(item.tweet)}`,
+    );
+    continue;
+  }
+  const summary = summarizeChain(item.entries);
+  console.log(
+    `  + CHAIN ${summary.count} more in ${item.chainId} ` +
+      `(${summary.authors.map((a) => `@${a}`).join(', ')}${summary.moreAuthors ? ` +${summary.moreAuthors}` : ''})`,
+  );
+}
+
 console.log('Nothing was posted to Slack and no state was written.');

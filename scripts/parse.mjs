@@ -102,6 +102,10 @@ export function parseTimelineJson(payload) {
       url: `https://x.com/${author}/status/${id}`,
       createdAt,
       links: linksOf(legacy),
+      // X's id for the whole thread: the root tweet's id, shared by every
+      // reply under it. It is what tells twelve replies apart from twelve
+      // unrelated mentions.
+      conversationId: typeof legacy.conversation_id_str === 'string' ? legacy.conversation_id_str : null,
       inReplyToStatusId: legacy.in_reply_to_status_id_str ?? null,
       isQuoteStatus: Boolean(legacy.is_quote_status),
       ...authorSignal(tweet),
@@ -148,6 +152,9 @@ export function parseDomRecords(records) {
       // The DOM shows a link as its display text ("entire.io/blog/…"), which
       // is the only form of the destination this path can see.
       links: Array.isArray(record.links) ? record.links.filter((l) => typeof l === 'string' && l) : [],
+      // The rendered page never names the thread, so chain grouping falls
+      // back to the author on this path.
+      conversationId: null,
       inReplyToStatusId: record.hasReplyingTo ? UNKNOWN_PARENT : null,
       isQuoteStatus: Boolean(record.hasQuotedTweet),
     });

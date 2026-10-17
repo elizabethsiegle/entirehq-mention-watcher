@@ -7,11 +7,19 @@ import {
   saveStore,
   diffSeen,
   markSeen,
+  chainCounts,
+  recordChainPost,
   setLoginWallAlerted,
   setBackoffAlerted,
   setEmptyResultsAlerted,
 } from './store.mjs';
-import { buildTweetMessage, buildAlertMessage, postToSlack } from './notify-slack.mjs';
+import {
+  buildTweetMessage,
+  buildChainMessage,
+  buildAlertMessage,
+  postToSlack,
+} from './notify-slack.mjs';
+import { planAnnouncements, summarizeChain } from './chain.mjs';
 import { scrapeSearch } from './x-scrape.mjs';
 import { triage, MUTED, PRIORITY } from './tier.mjs';
 import { classify, createClient } from './classify.mjs';
@@ -89,24 +97,26 @@ let consecutiveEmptyScrapes = 0;
 let stopped = false;
 let timer = null;
 
-async function announce(tweet) {
-  // Muted accounts are resolved before any API call so a muted handle costs
-  // nothing to skip.
+// Returns the tier decision, or null for a muted account. Muting is resolved
+// before any API call so a muted handle costs nothing to skip.
+async function decideOn(tweet) {
   const pre = triage(tweet, { mutedHandles: config.mutedHandles, teamHandles: config.teamHandles });
   if (pre.tier === MUTED) {
     logLine(`muted: @${tweet.author} ${tweet.url}`);
-    return true;
+    return null;
   }
 
   const verdict = anthropic ? await classify(tweet, { client: anthropic }) : null;
   if (verdict && !verdict.ok) logLine(`triage degraded (${verdict.error}) — score only`);
 
-  const decision = triage(tweet, {
+  return triage(tweet, {
     mutedHandles: config.mutedHandles,
     teamHandles: config.teamHandles,
     verdict,
   });
+}
 
+async function announce(tweet, decision) {
   const result = await postToSlack(
     config.slackWebhookUrl,
     buildTweetMessage(tweet, decision, { handle: config.ownHandle, domain: config.brandDomain }),
@@ -116,6 +126,19 @@ async function announce(tweet) {
     logLine(`slack ok [${label}]: @${tweet.author} ${tweet.kind} ${tweet.url}`);
   } else {
     logLine(`slack FAILED (status ${result.status}) [${label}]: @${tweet.author} ${tweet.url} — will retry next poll`);
+  }
+  return result.ok;
+}
+
+async function announceChain(chainId, entries) {
+  const summary = summarizeChain(entries);
+  const result = await postToSlack(config.slackWebhookUrl, buildChainMessage(summary));
+  if (result.ok) {
+    logLine(`slack ok [chain]: ${summary.count} collapsed from ${chainId}`);
+  } else {
+    logLine(
+      `slack FAILED (status ${result.status}) [chain]: ${summary.count} from ${chainId} — will retry next poll`,
+    );
   }
   return result.ok;
 }
@@ -215,12 +238,42 @@ async function pollOnce() {
   // the sole delivery channel now, so marking a failed post as seen would drop
   // that mention permanently and silently. Leaving it unseen costs a duplicate
   // attempt next poll, which is the cheaper mistake.
+  const decided = [];
   for (const tweet of fresh) {
-    const delivered = await announce(tweet);
-    if (delivered) {
+    const decision = await decideOn(tweet);
+    if (!decision) {
       store = markSeen(store, tweet.id);
       saveStore(dataDir, store);
+      continue;
     }
+    decided.push({ tweet, decision });
+  }
+
+  // Tiers are known before anything is posted, which is what lets a thread
+  // past its budget collapse into one line without risking a priority
+  // mention. It costs no extra classifier calls: every fresh mention was
+  // already being classified one at a time.
+  const plan = planAnnouncements(decided, {
+    counts: chainCounts(store),
+    limit: config.chainLimit,
+  });
+
+  for (const item of plan) {
+    if (item.type === 'post') {
+      if (!(await announce(item.tweet, item.decision))) continue;
+      store = markSeen(store, item.tweet.id);
+      // Charged only after Slack accepts it, so a bad Slack day cannot spend
+      // a thread's budget on posts nobody saw.
+      if (item.chainId) store = recordChainPost(store, item.chainId);
+      saveStore(dataDir, store);
+      continue;
+    }
+
+    if (!(await announceChain(item.chainId, item.entries))) continue;
+    // The summary is the delivery for every mention in it, so they are only
+    // seen once it lands.
+    for (const entry of item.entries) store = markSeen(store, entry.tweet.id);
+    saveStore(dataDir, store);
   }
   return config.pollMs;
 }
@@ -232,6 +285,7 @@ function backoffMs() {
 async function loop() {
   logLine(`watcher started — polling every ${Math.round(config.pollMs / 1000)}s — slack-only — ${projectDir}`);
   logLine(`search query: ${config.searchQuery}`);
+  logLine(`thread budget: ${config.chainLimit} individual posts per thread per 6h, then one summary line per poll`);
 
   while (!stopped) {
     let waitMs;

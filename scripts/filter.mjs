@@ -57,6 +57,7 @@ export function filterAndClassify(rawTweets, { ownHandle, brandDomain } = {}) {
       createdAt: t.createdAt,
       kind: classify(t),
       matchedVia: matchedVia(t, own, domain),
+      conversationId: t.conversationId ?? null,
       followers: t.followers ?? null,
       followsUs: t.followsUs ?? null,
       verified: t.verified ?? false,
