@@ -1,8 +1,14 @@
+import { MATCH_LINK, MATCH_BOTH } from './filter.mjs';
+
 const VERB = {
   mention: 'mentioned',
   reply: 'replied to',
   quote: 'quoted',
 };
+
+// Only used by callers that have no config in hand (the tests). The watcher
+// passes the live values, so a renamed account or domain cannot drift.
+const BRAND = { handle: 'entirehq', domain: 'entire.io' };
 
 const MAX_BODY = 500;
 
@@ -20,21 +26,90 @@ function body(text) {
   return flat.length > MAX_BODY ? `${flat.slice(0, MAX_BODY - 1)}…` : flat;
 }
 
-export function buildTweetMessage(tweet) {
-  const verb = VERB[tweet.kind] ?? 'mentioned';
+function reach(tweet) {
+  const n = Number(tweet.followers);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  if (n >= 10000) return `${Math.round(n / 1000)}k followers`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k followers`;
+  return `${n} followers`;
+}
+
+function meta(tweet, triage) {
+  const r = reach(tweet);
+  const reasons = (triage?.reasons ?? []).filter((x) => x !== r);
+  return reasons.slice(0, 3).join(', ') || tweet.kind;
+}
+
+// Priority gets the full card and a leading marker; routine collapses to one
+// line. The whole point of the split is that a skimming reader can tell them
+// apart without reading either, so the shapes must differ, not just the words.
+// The kind leads every line, in the same slot on both tiers, so scanning the
+// left edge answers "reply or tweet?" without reading the line. It used to sit
+// mid-chain in the trailing metadata, where it was effectively invisible.
+const KIND_LABEL = {
+  mention: 'TWEET',
+  reply: 'REPLY',
+  quote: 'QUOTE',
+};
+
+export function kindLabel(kind) {
+  return KIND_LABEL[kind] ?? 'TWEET';
+}
+
+// What the post did to us. A link-only share never tagged the account, so the
+// reply/quote verb would misreport it: the kind label already carries whether
+// it was a reply, and the verb slot has to say what it matched on instead.
+function action(tweet, brand) {
+  if (tweet.matchedVia === MATCH_LINK) return `linked ${brand.domain}`;
+  return `${VERB[tweet.kind] ?? 'mentioned'} @${brand.handle}`;
+}
+
+function linkTag(tweet, brand) {
+  return tweet.matchedVia === MATCH_LINK || tweet.matchedVia === MATCH_BOTH
+    ? `links ${brand.domain}`
+    : null;
+}
+
+export function buildTweetMessage(tweet, triage = null, brand = BRAND) {
+  const did = action(tweet, brand);
   const epoch = Math.floor(new Date(tweet.createdAt).getTime() / 1000);
   const handle = escapeSlack(tweet.author);
+  const profile = `https://x.com/${encodeURIComponent(tweet.author)}`;
+  const label = kindLabel(tweet.kind);
+  const r = reach(tweet);
+  const tag = linkTag(tweet, brand);
+
+  if (triage && triage.tier === 'routine') {
+    return {
+      text: `${label} \u00b7 @${handle} ${did}`,
+      blocks: [
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text:
+                `\`${label}\` <${profile}|@${handle}> \u00b7 ` +
+                `${escapeSlack(body(tweet.text).slice(0, 140))} \u00b7 ` +
+                [`<${tweet.url}|open>`, r, tag].filter(Boolean).join(' \u00b7 '),
+            },
+          ],
+        },
+      ],
+    };
+  }
 
   return {
-    text: `@${handle} ${verb} @entirehq`,
+    text: `\u2605 ${label} \u00b7 @${handle} ${did}`,
     blocks: [
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
           text:
-            `*<https://x.com/${encodeURIComponent(tweet.author)}|@${handle}>* ${verb} @entirehq\n` +
-            `>${escapeSlack(body(tweet.text))}`,
+            `*\u2605 \`${label}\`* <${profile}|@${handle}>` +
+            (r ? ` \u00b7 ${r}` : '') +
+            `\n>${escapeSlack(body(tweet.text))}`,
         },
       },
       {
@@ -42,7 +117,14 @@ export function buildTweetMessage(tweet) {
         elements: [
           {
             type: 'mrkdwn',
-            text: `<${tweet.url}|View on X> · ${tweet.kind} · <!date^${epoch}^{date_short_pretty} at {time}|${tweet.createdAt}>`,
+            text: [
+              `<${tweet.url}|View on X>`,
+              escapeSlack(meta(tweet, triage)),
+              tag,
+              `<!date^${epoch}^{date_short_pretty} at {time}|${tweet.createdAt}>`,
+            ]
+              .filter(Boolean)
+              .join(' \u00b7 '),
           },
         ],
       },

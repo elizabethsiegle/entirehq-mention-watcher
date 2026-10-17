@@ -13,6 +13,8 @@ import {
 } from './store.mjs';
 import { buildTweetMessage, buildAlertMessage, postToSlack } from './notify-slack.mjs';
 import { scrapeSearch } from './x-scrape.mjs';
+import { triage, MUTED, PRIORITY } from './tier.mjs';
+import { classify, createClient } from './classify.mjs';
 
 const MAX_BACKOFF_MS = 30 * 60 * 1000;
 
@@ -76,6 +78,11 @@ try {
   // A missing pid file costs a duplicate-spawn check, not correctness.
 }
 
+const anthropic = createClient(config.anthropicApiKey);
+if (!anthropic) {
+  logLine('ANTHROPIC_API_KEY not set — triage runs on the deterministic score alone');
+}
+
 let store = loadStore(dataDir);
 let consecutiveFailures = 0;
 let consecutiveEmptyScrapes = 0;
@@ -83,11 +90,32 @@ let stopped = false;
 let timer = null;
 
 async function announce(tweet) {
-  const result = await postToSlack(config.slackWebhookUrl, buildTweetMessage(tweet));
+  // Muted accounts are resolved before any API call so a muted handle costs
+  // nothing to skip.
+  const pre = triage(tweet, { mutedHandles: config.mutedHandles, teamHandles: config.teamHandles });
+  if (pre.tier === MUTED) {
+    logLine(`muted: @${tweet.author} ${tweet.url}`);
+    return true;
+  }
+
+  const verdict = anthropic ? await classify(tweet, { client: anthropic }) : null;
+  if (verdict && !verdict.ok) logLine(`triage degraded (${verdict.error}) — score only`);
+
+  const decision = triage(tweet, {
+    mutedHandles: config.mutedHandles,
+    teamHandles: config.teamHandles,
+    verdict,
+  });
+
+  const result = await postToSlack(
+    config.slackWebhookUrl,
+    buildTweetMessage(tweet, decision, { handle: config.ownHandle, domain: config.brandDomain }),
+  );
+  const label = `${decision.tier}${decision.tier === PRIORITY ? ' \u2605' : ''} score=${decision.score}`;
   if (result.ok) {
-    logLine(`slack ok: @${tweet.author} ${tweet.kind} ${tweet.url}`);
+    logLine(`slack ok [${label}]: @${tweet.author} ${tweet.kind} ${tweet.url}`);
   } else {
-    logLine(`slack FAILED (status ${result.status}): @${tweet.author} ${tweet.url} — will retry next poll`);
+    logLine(`slack FAILED (status ${result.status}) [${label}]: @${tweet.author} ${tweet.url} — will retry next poll`);
   }
   return result.ok;
 }
@@ -157,7 +185,7 @@ async function pollOnce() {
     );
   }
 
-  const classified = filterAndClassify(tweets, config.ownHandle);
+  const classified = filterAndClassify(tweets, config);
   const { isBaseline, fresh, store: nextStore } = diffSeen(store, classified);
 
   if (isBaseline) {
@@ -203,6 +231,7 @@ function backoffMs() {
 
 async function loop() {
   logLine(`watcher started — polling every ${Math.round(config.pollMs / 1000)}s — slack-only — ${projectDir}`);
+  logLine(`search query: ${config.searchQuery}`);
 
   while (!stopped) {
     let waitMs;

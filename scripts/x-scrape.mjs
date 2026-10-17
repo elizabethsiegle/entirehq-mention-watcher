@@ -46,6 +46,12 @@ function extractDomRecords() {
       handle: handleEl?.textContent ?? '',
       text: article.querySelector('[data-testid="tweetText"]')?.textContent ?? '',
       datetime: timeEl?.getAttribute('datetime') ?? null,
+      // Link destinations, as X renders them: the anchor text of a link in the
+      // tweet body, and of a link-preview card, both read as the display URL
+      // ("entire.io/blog/…"). The href itself is always t.co and says nothing.
+      links: Array.from(
+        article.querySelectorAll('[data-testid="tweetText"] a, [data-testid="card.wrapper"] a'),
+      ).map((a) => a.textContent ?? ''),
       hasReplyingTo: article.textContent.includes('Replying to'),
       // Heuristic, DOM-fallback path only — less reliable than the JSON
       // path's `is_quote_status` field. A genuine quoted tweet is rendered as
