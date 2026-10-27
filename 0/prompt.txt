@@ -1,0 +1,1 @@
+make a trail and work on it to check for github outage mentions. this could be searching for github reliability, github outage...those tweets should also appear in the slack channel
