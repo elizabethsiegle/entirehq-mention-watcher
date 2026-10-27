@@ -71,6 +71,9 @@ export function loadConfig(env = process.env) {
   const searchQuery = present(env.X_SEARCH_QUERY)
     ? env.X_SEARCH_QUERY.trim()
     : `(@${ownHandle} OR "${brandDomain}")`;
+  const githubSearchQuery = present(env.X_GITHUB_SEARCH_QUERY)
+    ? env.X_GITHUB_SEARCH_QUERY.trim()
+    : '("github down" OR "github is down" OR "github goes down" OR (github OR @github OR @githubstatus) (outage OR outages OR downtime OR reliability OR unreliable OR unavailable OR degraded)) -is:retweet';
 
   return {
     // Optional. Without it the LLM triage is skipped and the deterministic
@@ -86,6 +89,7 @@ export function loadConfig(env = process.env) {
     pollMs,
     chainLimit,
     searchQuery,
+    githubSearchQuery,
     ownHandle,
     brandDomain,
     searchUrl: `https://x.com/search?q=${encodeURIComponent(searchQuery)}&src=typed_query&f=live`,

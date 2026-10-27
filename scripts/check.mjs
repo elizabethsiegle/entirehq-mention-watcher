@@ -3,7 +3,7 @@
 import { loadConfig, loadEnvFile, getProjectDir, ConfigError } from './config.mjs';
 import { filterAndClassify } from './filter.mjs';
 import { formatTweet, printWarning, printQuiet } from './notify-terminal.mjs';
-import { scrapeSearch } from './x-scrape.mjs';
+import { scrapeWatchSearches } from './search.mjs';
 
 loadEnvFile(getProjectDir());
 
@@ -16,10 +16,11 @@ try {
 }
 
 console.log(`Dry run — scraping ${config.searchUrl}`);
+console.log(`GitHub reliability query: ${config.githubSearchQuery}`);
 console.log('Nothing will be sent to Slack.\n');
 
 try {
-  const { source, tweets, loginWall } = await scrapeSearch(config);
+  const { source, tweets, loginWall } = await scrapeWatchSearches(config);
   printQuiet(`extraction path: ${source}`);
 
   if (loginWall) {
@@ -29,7 +30,7 @@ try {
 
   const classified = filterAndClassify(tweets, config);
   printQuiet(`${tweets.length} tweets scraped, ${classified.length} after filtering out @${config.ownHandle}`);
-  const byLink = classified.filter((t) => t.matchedVia !== 'handle').length;
+  const byLink = classified.filter((t) => ['link', 'both'].includes(t.matchedVia)).length;
   printQuiet(`${byLink} of them matched on a ${config.brandDomain} link`);
 
   if (classified.length === 0) {

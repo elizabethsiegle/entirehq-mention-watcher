@@ -1,4 +1,5 @@
 import { ROUTINE } from './tier.mjs';
+import { MATCH_GITHUB } from './filter.mjs';
 
 export const DEFAULT_CHAIN_LIMIT = 3;
 
@@ -29,7 +30,7 @@ export function planAnnouncements(decided, { counts = {}, limit = DEFAULT_CHAIN_
   const buckets = new Map();
 
   for (const entry of decided) {
-    if (entry?.decision?.tier !== ROUTINE) {
+    if (entry?.decision?.tier !== ROUTINE || entry?.tweet?.matchedVia === MATCH_GITHUB) {
       plan.push({ type: 'post', ...entry });
       continue;
     }

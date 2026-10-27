@@ -8,6 +8,8 @@ A mention reaches you either because it tags the account or because it links the
 
 Judge whether the @entirehq team should act on a mention right now. Act means: reply, repost, or route it to someone internally.
 
+You also monitor GitHub outage and reliability discussions from a separate search. These authors have not necessarily mentioned Entire. Treat concrete reports of GitHub service failures, degraded performance, or recurring reliability problems as PRIORITY; generic commentary is ROUTINE. Do not assume every result confirms an active outage.
+
 PRIORITY: a question or support request aimed at the product; a user reporting a real problem; a notable endorsement worth reposting; someone comparing @entirehq to a competitor or saying they are switching; a request for access or a demo.
 ROUTINE: generic praise, emoji-only replies, tangential mentions in an unrelated thread, pile-on replies that add nothing, chatter between other people where @entirehq is incidental.
 IGNORE: spam, crypto/airdrop bait, unrelated accounts that merely contain the string, engagement farming.
@@ -30,6 +32,7 @@ const TOOL = {
 };
 
 const MATCHED = {
+  github: 'GitHub outage/reliability search, does not tag the account or link the site',
   handle: 'tags the account',
   link: 'links the site, does not tag the account',
   both: 'tags the account and links the site',

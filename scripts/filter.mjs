@@ -1,6 +1,7 @@
 export const MATCH_HANDLE = 'handle';
 export const MATCH_LINK = 'link';
 export const MATCH_BOTH = 'both';
+export const MATCH_GITHUB = 'github';
 
 function classify(rawTweet) {
   // Reply beats quote: a quoted reply is still a reply to something of ours,
@@ -27,6 +28,7 @@ function matchedVia(rawTweet, own, domain) {
 
   if (byLink && byHandle) return MATCH_BOTH;
   if (byLink) return MATCH_LINK;
+  if (!byHandle && rawTweet.searchTopic === 'github') return MATCH_GITHUB;
   return MATCH_HANDLE;
 }
 

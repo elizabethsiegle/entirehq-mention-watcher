@@ -1,5 +1,5 @@
 import { loadConfig, loadEnvFile, getProjectDir } from './config.mjs';
-import { scrapeSearch } from './x-scrape.mjs';
+import { scrapeWatchSearches } from './search.mjs';
 import { filterAndClassify } from './filter.mjs';
 import { triage, MUTED, PRIORITY } from './tier.mjs';
 import { classify, createClient } from './classify.mjs';
@@ -17,7 +17,7 @@ try {
 }
 
 const { mutedHandles, teamHandles } = config;
-const { source, tweets } = await scrapeSearch(config);
+const { source, tweets } = await scrapeWatchSearches(config);
 const classified = filterAndClassify(tweets, config);
 const client = createClient(config.anthropicApiKey);
 

@@ -20,7 +20,7 @@ import {
   postToSlack,
 } from './notify-slack.mjs';
 import { planAnnouncements, summarizeChain } from './chain.mjs';
-import { scrapeSearch } from './x-scrape.mjs';
+import { scrapeWatchSearches } from './search.mjs';
 import { triage, MUTED, PRIORITY } from './tier.mjs';
 import { classify, createClient } from './classify.mjs';
 
@@ -159,7 +159,7 @@ async function handleLoginWall() {
 }
 
 async function pollOnce() {
-  const { source, tweets, loginWall } = await scrapeSearch(config);
+  const { source, tweets, loginWall, searches } = await scrapeWatchSearches(config);
 
   if (loginWall) {
     await handleLoginWall();
@@ -172,13 +172,16 @@ async function pollOnce() {
 
   // The JSON path is the healthy one. Say so out loud when we fall back, so a
   // silent degradation in extraction quality is visible rather than guessed at.
-  if (source === 'dom') logLine('SearchTimeline JSON not seen — using the DOM fallback');
+  for (const search of searches) {
+    logLine(`${search.name}: ${search.tweets.length} tweets via ${search.source}`);
+    if (search.source === 'dom') logLine(`${search.name}: SearchTimeline JSON not seen — using the DOM fallback`);
 
-  if (tweets.length >= FULL_PAGE_HINT) {
-    logLine(
-      `scraped ${tweets.length} tweets this poll — X returns one page (~20 entries); ` +
-        'this result may be truncated and some mentions from this window could be missed',
-    );
+    if (search.tweets.length >= FULL_PAGE_HINT) {
+      logLine(
+        `${search.name}: scraped ${search.tweets.length} tweets this poll — X returns one page (~20 entries); ` +
+          'this result may be truncated and some mentions from this window could be missed',
+      );
+    }
   }
 
   // A previously non-empty baseline (some tweet was recorded at some point)
@@ -285,6 +288,7 @@ function backoffMs() {
 async function loop() {
   logLine(`watcher started — polling every ${Math.round(config.pollMs / 1000)}s — slack-only — ${projectDir}`);
   logLine(`search query: ${config.searchQuery}`);
+  logLine(`GitHub reliability query: ${config.githubSearchQuery}`);
   logLine(`thread budget: ${config.chainLimit} individual posts per thread per 6h, then one summary line per poll`);
 
   while (!stopped) {

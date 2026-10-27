@@ -4,8 +4,9 @@ Someone replies to `@entirehq` on X, or posts a link to entire.io without
 tagging anyone. You find out four hours later, because nobody had that search
 tab open.
 
-This closes that gap. A daemon polls one live search for both the handle and
-the domain every five minutes, triages every new mention, and posts it to
+This closes that gap. A daemon polls two live searches every five minutes:
+Entire's handle/domain mentions and GitHub outage/reliability discussions.
+It triages every new result and posts it to
 Slack in one of two shapes so the ones worth acting on do not read like the
 rest.
 
@@ -55,6 +56,17 @@ Optional: `X_WATCH_POLL_MS` (`300000`), `X_CHAIN_LIMIT` (`3`),
 `(@entirehq OR "entire.io")`, built from the two above),
 `ANTHROPIC_API_KEY`, `X_MUTE_HANDLES`, `X_TEAM_HANDLES`.
 
+`X_GITHUB_SEARCH_QUERY` overrides the separate GitHub search, which defaults to
+`("github down" OR "github is down" OR "github goes down" OR (github OR @github OR @githubstatus) (outage OR outages OR downtime OR reliability OR unreliable OR unavailable OR degraded)) -is:retweet`.
+Results go to the same Slack webhook with a `GitHub reliability` label. These
+are public reports and discussions, not confirmation of an active outage.
+The GitHub search also requires GitHub and a reliability term in the tweet's
+own text, so a bare GitHub link is insufficient.
+GitHub-only results get individual posts even when a thread has exhausted its
+routine reply budget. A tweet found by both searches is delivered only once.
+On an existing installation, the first poll after this update delivers unseen
+GitHub results; a fresh installation still baselines both searches silently.
+
 Config is read once at boot — after editing `.env`, re-run `install-agent`.
 
 **Why cookies, not the X API.** Live search is login-gated, and API v2's
@@ -88,6 +100,9 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
   how it matched (handle, link, or both), and Slack and the classifier both
   read that, since a link share is not addressed to anyone and the author is
   not waiting on a reply.
+- **GitHub has a separate search page.** GitHub discussion cannot crowd Entire
+  mentions out of the same result page. Both searches must succeed before a
+  batch is delivered; a failure uses the existing backoff and Slack alerts.
 - **A link is invisible in the tweet text.** X rewrites every URL in
   `full_text` to `t.co`, so the domain can only be matched against the
   expanded URLs in `entities.urls` (the link's display text, on the DOM
@@ -134,7 +149,7 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
 
 ## Known limitations
 
-- **One page per poll** — no scrolling, so roughly X's first ~20 results.
+- **One page per search per poll** — no scrolling, so roughly X's first ~20 results per search.
   Heavier bursts overflow; the watcher logs a note when a poll comes back that
   full. Shorter `X_WATCH_POLL_MS` reduces the risk at the cost of more sessions.
   Both terms share that one page, so a burst of replies to the account can
@@ -167,13 +182,12 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
 | --- | --- |
 | `npm run install-agent` | Install and start the daemon (idempotent) |
 | `npm run uninstall-agent` | Stop and remove it; hooks take over again |
-| `npm run preview` | Triages one live scrape and prints the tiers. Posts nothing |
-| `npm run check` | One live scrape, dry-run, notifies nobody |
-| `npm test` | 181 tests: config, both parsers, filter, store, notifiers, launchd, triage, chains |
+| `npm run preview` | Triages both live searches and prints the tiers. Posts nothing |
+| `npm run check` | Both live searches, dry-run, notifies nobody |
+| `npm test` | Tests config, parsers, search delivery, filter, store, notifiers, launchd, triage, chains |
 | `tail -f .claude/entirehq-watcher/watch.log` | What the daemon is doing |
 
-One Browserbase session per poll — 288/day at the default, now continuous
-rather than only while an editor is open. One Haiku call per *new* mention
+Two Browserbase sessions per poll — 576/day at the default. One Haiku call per *new* mention
 (not per poll), so classifier spend tracks mention volume, not uptime: tens of
 calls a day at current volume, cents a month.
 
@@ -183,6 +197,7 @@ calls a day at current volume, cents a month.
 | --- | --- |
 | `scripts/config.mjs` | Loads and validates `.env`; native `loadEnvFile` |
 | `scripts/x-scrape.mjs` | Browserbase session, cookies, JSON interception, DOM fallback |
+| `scripts/search.mjs` | Separate Entire and GitHub searches, with source attribution |
 | `scripts/parse.mjs` | Both payload shapes → normalized records. Pure |
 | `scripts/filter.mjs` | Drops our own posts, labels mention/reply/quote and handle/link. Pure |
 | `scripts/store.mjs` | Seen-id cache, 500-id cap, baseline and alert flags |

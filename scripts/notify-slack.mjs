@@ -1,4 +1,4 @@
-import { MATCH_LINK, MATCH_BOTH } from './filter.mjs';
+import { MATCH_LINK, MATCH_BOTH, MATCH_GITHUB } from './filter.mjs';
 
 const VERB = {
   mention: 'mentioned',
@@ -60,11 +60,13 @@ export function kindLabel(kind) {
 // reply/quote verb would misreport it: the kind label already carries whether
 // it was a reply, and the verb slot has to say what it matched on instead.
 function action(tweet, brand) {
+  if (tweet.matchedVia === MATCH_GITHUB) return 'discussed GitHub reliability';
   if (tweet.matchedVia === MATCH_LINK) return `linked ${brand.domain}`;
   return `${VERB[tweet.kind] ?? 'mentioned'} @${brand.handle}`;
 }
 
 function linkTag(tweet, brand) {
+  if (tweet.matchedVia === MATCH_GITHUB) return 'GitHub reliability';
   return tweet.matchedVia === MATCH_LINK || tweet.matchedVia === MATCH_BOTH
     ? `links ${brand.domain}`
     : null;

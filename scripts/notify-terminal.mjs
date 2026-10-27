@@ -32,7 +32,9 @@ function body(text) {
 
 export function formatTweet(tweet, now = new Date()) {
   const kind = KIND_LABEL[tweet.kind] ?? tweet.kind;
-  const via = tweet.matchedVia && tweet.matchedVia !== 'handle' ? ` ${C.dim}·${C.reset} via link` : '';
+  const via = tweet.matchedVia === 'github'
+    ? ` ${C.dim}·${C.reset} GitHub reliability`
+    : tweet.matchedVia && tweet.matchedVia !== 'handle' ? ` ${C.dim}·${C.reset} via link` : '';
   return (
     `${C.dim}[${stamp(now)}]${C.reset} ${C.yellow}${C.bold}NEW MENTION${C.reset} ` +
     `${C.cyan}@${tweet.author}${C.reset} ${C.dim}·${C.reset} ${kind}${via}\n` +
