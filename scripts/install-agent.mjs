@@ -32,18 +32,37 @@ writeFileSync(
 
 const domain = `gui/${process.getuid()}`;
 
-// Tear down any previous instance first — bootstrap fails outright if the
-// label is already loaded, and a stale one would keep running old settings.
+function isLoaded() {
+  try {
+    execFileSync('launchctl', ['print', `${domain}/${LABEL}`], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Tear down any previous instance first: bootstrap fails outright if the label
+// is already loaded, and a stale one would keep running old settings.
 try {
   execFileSync('launchctl', ['bootout', `${domain}/${LABEL}`], { stdio: 'ignore' });
 } catch {
   // Not loaded — nothing to remove.
 }
 
+// bootout returns before launchd has finished releasing the label. Bootstrapping
+// into that window fails with "Bootstrap failed: 5: Input/output error", which
+// reads like a permissions problem and is really just a race.
+const deadline = Date.now() + 10000;
+while (isLoaded() && Date.now() < deadline) {
+  execFileSync('sleep', ['0.25']);
+}
+
 try {
   execFileSync('launchctl', ['bootstrap', domain, target], { stdio: 'pipe' });
 } catch (err) {
-  console.error(`Failed to bootstrap the launch agent: ${err.stderr?.toString().trim() || err.message}`);
+  const detail = err.stderr?.toString().trim() || err.message;
+  console.error(`Failed to bootstrap the launch agent: ${detail}`);
+  if (isLoaded()) console.error(`${LABEL} is still loaded — run: launchctl bootout ${domain}/${LABEL}`);
   process.exit(1);
 }
 

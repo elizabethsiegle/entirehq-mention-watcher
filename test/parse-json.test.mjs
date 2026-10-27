@@ -33,6 +33,11 @@ test('parseTimelineJson maps a plain mention completely', () => {
     text: 'hey @entirehq does this work with self-hosted runners?',
     url: 'https://x.com/somedev/status/1958000000000000001',
     createdAt: '2026-08-18T14:02:11.000Z',
+    followers: null,
+    followsUs: null,
+    verified: false,
+    links: [],
+    conversationId: null,
     inReplyToStatusId: null,
     isQuoteStatus: false,
   });
@@ -137,4 +142,78 @@ test('parseTimelineJson dedupes a rest_id repeated across two TimelineAddEntries
     ['9990000000000000001', '9990000000000000002'],
     'the id repeated across both instructions must appear exactly once',
   );
+});
+
+test('parseTimelineJson recovers link destinations that full_text only shows as t.co', () => {
+  const payload = {
+    data: {
+      search_by_raw_query: {
+        search_timeline: {
+          timeline: {
+            instructions: [
+              {
+                type: 'TimelineAddEntries',
+                entries: [
+                  tweetEntry('9990000000000000003', {
+                    full_text: 'moved our repos over https://t.co/shortened',
+                    entities: {
+                      urls: [
+                        { expanded_url: 'https://entire.io/blog/why', display_url: 'entire.io/blog/why' },
+                      ],
+                    },
+                  }),
+                ],
+              },
+            ],
+          },
+        },
+      },
+    },
+  };
+
+  const [tweet] = parseTimelineJson(payload);
+  assert.deepEqual(tweet.links, ['https://entire.io/blog/why', 'entire.io/blog/why']);
+});
+
+test('parseTimelineJson emits an empty link list rather than undefined when entities are absent', () => {
+  const payload = {
+    data: {
+      search_by_raw_query: {
+        search_timeline: {
+          timeline: {
+            instructions: [
+              { type: 'TimelineAddEntries', entries: [tweetEntry('9990000000000000004', { entities: null })] },
+            ],
+          },
+        },
+      },
+    },
+  };
+  assert.deepEqual(parseTimelineJson(payload)[0].links, []);
+});
+
+test('parseTimelineJson carries the thread id, which is what groups a reply chain', () => {
+  const payload = {
+    data: {
+      search_by_raw_query: {
+        search_timeline: {
+          timeline: {
+            instructions: [
+              {
+                type: 'TimelineAddEntries',
+                entries: [
+                  tweetEntry('9990000000000000005', { conversation_id_str: '9980000000000000000' }),
+                  tweetEntry('9990000000000000006', { conversation_id_str: 42 }),
+                ],
+              },
+            ],
+          },
+        },
+      },
+    },
+  };
+
+  const [threaded, badShape] = parseTimelineJson(payload);
+  assert.equal(threaded.conversationId, '9980000000000000000');
+  assert.equal(badShape.conversationId, null, 'a non-string id must not reach the grouping key');
 });

@@ -7,12 +7,22 @@ import {
   saveStore,
   diffSeen,
   markSeen,
+  chainCounts,
+  recordChainPost,
   setLoginWallAlerted,
   setBackoffAlerted,
   setEmptyResultsAlerted,
 } from './store.mjs';
-import { buildTweetMessage, buildAlertMessage, postToSlack } from './notify-slack.mjs';
-import { scrapeSearch } from './x-scrape.mjs';
+import {
+  buildTweetMessage,
+  buildChainMessage,
+  buildAlertMessage,
+  postToSlack,
+} from './notify-slack.mjs';
+import { planAnnouncements, summarizeChain } from './chain.mjs';
+import { scrapeWatchSearches } from './search.mjs';
+import { triage, MUTED, PRIORITY } from './tier.mjs';
+import { classify, createClient } from './classify.mjs';
 
 const MAX_BACKOFF_MS = 30 * 60 * 1000;
 
@@ -76,18 +86,59 @@ try {
   // A missing pid file costs a duplicate-spawn check, not correctness.
 }
 
+const anthropic = createClient(config.anthropicApiKey);
+if (!anthropic) {
+  logLine('ANTHROPIC_API_KEY not set — triage runs on the deterministic score alone');
+}
+
 let store = loadStore(dataDir);
 let consecutiveFailures = 0;
 let consecutiveEmptyScrapes = 0;
 let stopped = false;
 let timer = null;
 
-async function announce(tweet) {
-  const result = await postToSlack(config.slackWebhookUrl, buildTweetMessage(tweet));
+// Returns the tier decision, or null for a muted account. Muting is resolved
+// before any API call so a muted handle costs nothing to skip.
+async function decideOn(tweet) {
+  const pre = triage(tweet, { mutedHandles: config.mutedHandles, teamHandles: config.teamHandles });
+  if (pre.tier === MUTED) {
+    logLine(`muted: @${tweet.author} ${tweet.url}`);
+    return null;
+  }
+
+  const verdict = anthropic ? await classify(tweet, { client: anthropic }) : null;
+  if (verdict && !verdict.ok) logLine(`triage degraded (${verdict.error}) — score only`);
+
+  return triage(tweet, {
+    mutedHandles: config.mutedHandles,
+    teamHandles: config.teamHandles,
+    verdict,
+  });
+}
+
+async function announce(tweet, decision) {
+  const result = await postToSlack(
+    config.slackWebhookUrl,
+    buildTweetMessage(tweet, decision, { handle: config.ownHandle, domain: config.brandDomain }),
+  );
+  const label = `${decision.tier}${decision.tier === PRIORITY ? ' \u2605' : ''} score=${decision.score}`;
   if (result.ok) {
-    logLine(`slack ok: @${tweet.author} ${tweet.kind} ${tweet.url}`);
+    logLine(`slack ok [${label}]: @${tweet.author} ${tweet.kind} ${tweet.url}`);
   } else {
-    logLine(`slack FAILED (status ${result.status}): @${tweet.author} ${tweet.url} — will retry next poll`);
+    logLine(`slack FAILED (status ${result.status}) [${label}]: @${tweet.author} ${tweet.url} — will retry next poll`);
+  }
+  return result.ok;
+}
+
+async function announceChain(chainId, entries) {
+  const summary = summarizeChain(entries);
+  const result = await postToSlack(config.slackWebhookUrl, buildChainMessage(summary));
+  if (result.ok) {
+    logLine(`slack ok [chain]: ${summary.count} collapsed from ${chainId}`);
+  } else {
+    logLine(
+      `slack FAILED (status ${result.status}) [chain]: ${summary.count} from ${chainId} — will retry next poll`,
+    );
   }
   return result.ok;
 }
@@ -108,7 +159,7 @@ async function handleLoginWall() {
 }
 
 async function pollOnce() {
-  const { source, tweets, loginWall } = await scrapeSearch(config);
+  const { source, tweets, loginWall, searches } = await scrapeWatchSearches(config);
 
   if (loginWall) {
     await handleLoginWall();
@@ -121,13 +172,16 @@ async function pollOnce() {
 
   // The JSON path is the healthy one. Say so out loud when we fall back, so a
   // silent degradation in extraction quality is visible rather than guessed at.
-  if (source === 'dom') logLine('SearchTimeline JSON not seen — using the DOM fallback');
+  for (const search of searches) {
+    logLine(`${search.name}: ${search.tweets.length} tweets via ${search.source}`);
+    if (search.source === 'dom') logLine(`${search.name}: SearchTimeline JSON not seen — using the DOM fallback`);
 
-  if (tweets.length >= FULL_PAGE_HINT) {
-    logLine(
-      `scraped ${tweets.length} tweets this poll — X returns one page (~20 entries); ` +
-        'this result may be truncated and some mentions from this window could be missed',
-    );
+    if (search.tweets.length >= FULL_PAGE_HINT) {
+      logLine(
+        `${search.name}: scraped ${search.tweets.length} tweets this poll — X returns one page (~20 entries); ` +
+          'this result may be truncated and some mentions from this window could be missed',
+      );
+    }
   }
 
   // A previously non-empty baseline (some tweet was recorded at some point)
@@ -157,7 +211,7 @@ async function pollOnce() {
     );
   }
 
-  const classified = filterAndClassify(tweets, config.ownHandle);
+  const classified = filterAndClassify(tweets, config);
   const { isBaseline, fresh, store: nextStore } = diffSeen(store, classified);
 
   if (isBaseline) {
@@ -187,12 +241,42 @@ async function pollOnce() {
   // the sole delivery channel now, so marking a failed post as seen would drop
   // that mention permanently and silently. Leaving it unseen costs a duplicate
   // attempt next poll, which is the cheaper mistake.
+  const decided = [];
   for (const tweet of fresh) {
-    const delivered = await announce(tweet);
-    if (delivered) {
+    const decision = await decideOn(tweet);
+    if (!decision) {
       store = markSeen(store, tweet.id);
       saveStore(dataDir, store);
+      continue;
     }
+    decided.push({ tweet, decision });
+  }
+
+  // Tiers are known before anything is posted, which is what lets a thread
+  // past its budget collapse into one line without risking a priority
+  // mention. It costs no extra classifier calls: every fresh mention was
+  // already being classified one at a time.
+  const plan = planAnnouncements(decided, {
+    counts: chainCounts(store),
+    limit: config.chainLimit,
+  });
+
+  for (const item of plan) {
+    if (item.type === 'post') {
+      if (!(await announce(item.tweet, item.decision))) continue;
+      store = markSeen(store, item.tweet.id);
+      // Charged only after Slack accepts it, so a bad Slack day cannot spend
+      // a thread's budget on posts nobody saw.
+      if (item.chainId) store = recordChainPost(store, item.chainId);
+      saveStore(dataDir, store);
+      continue;
+    }
+
+    if (!(await announceChain(item.chainId, item.entries))) continue;
+    // The summary is the delivery for every mention in it, so they are only
+    // seen once it lands.
+    for (const entry of item.entries) store = markSeen(store, entry.tweet.id);
+    saveStore(dataDir, store);
   }
   return config.pollMs;
 }
@@ -203,6 +287,9 @@ function backoffMs() {
 
 async function loop() {
   logLine(`watcher started — polling every ${Math.round(config.pollMs / 1000)}s — slack-only — ${projectDir}`);
+  logLine(`search query: ${config.searchQuery}`);
+  logLine(`GitHub reliability query: ${config.githubSearchQuery}`);
+  logLine(`thread budget: ${config.chainLimit} individual posts per thread per 6h, then one summary line per poll`);
 
   while (!stopped) {
     let waitMs;
