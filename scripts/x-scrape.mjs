@@ -9,7 +9,7 @@ const SETTLE_MS = 6000;
 // X reads the session from cookies on both hosts; ct0 must also travel as the
 // x-csrf-token header on the XHR, which the page's own client handles once the
 // cookie is present.
-function sessionCookies({ xAuthToken, xCsrfToken }) {
+export function sessionCookies({ xAuthToken, xCsrfToken }) {
   return ['x.com', 'twitter.com'].flatMap((domain) => [
     { name: 'auth_token', value: xAuthToken, domain: `.${domain}`, path: '/', httpOnly: true, secure: true },
     { name: 'ct0', value: xCsrfToken, domain: `.${domain}`, path: '/', secure: true },

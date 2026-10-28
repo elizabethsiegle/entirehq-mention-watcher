@@ -95,3 +95,13 @@ test('loadConfig rejects a non-numeric poll interval', () => {
     /X_WATCH_POLL_MS/,
   );
 });
+
+test('replies default off and require an explicit valid posting account when enabled', () => {
+  assert.equal(loadConfig(complete).replyMode, 'off');
+  assert.throws(() => loadConfig({ ...complete, X_REPLY_MODE: 'on' }), /X_REPLY_MODE/);
+  assert.throws(() => loadConfig({ ...complete, X_REPLY_MODE: 'live' }), /X_REPLY_HANDLE/);
+  assert.throws(() => loadConfig({ ...complete, X_REPLY_MODE: 'live', X_REPLY_HANDLE: 'bad/name' }), /X_REPLY_HANDLE/);
+  const c = loadConfig({ ...complete, X_REPLY_MODE: 'live', X_REPLY_HANDLE: '@LizziePika' });
+  assert.equal(c.replyHandle, 'lizziepika');
+  assert.equal(c.replyMode, 'live');
+});

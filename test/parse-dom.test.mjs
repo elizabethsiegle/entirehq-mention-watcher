@@ -33,6 +33,7 @@ test('parseDomRecords normalizes handle and rebuilds a canonical url', () => {
     conversationId: null,
     inReplyToStatusId: null,
     isQuoteStatus: false,
+    isRetweet: null,
   });
 });
 

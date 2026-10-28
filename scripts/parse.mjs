@@ -108,6 +108,7 @@ export function parseTimelineJson(payload) {
       conversationId: typeof legacy.conversation_id_str === 'string' ? legacy.conversation_id_str : null,
       inReplyToStatusId: legacy.in_reply_to_status_id_str ?? null,
       isQuoteStatus: Boolean(legacy.is_quote_status),
+      isRetweet: Boolean(legacy.retweeted_status_result || legacy.retweeted_status_id_str),
       ...authorSignal(tweet),
     });
   }
@@ -157,6 +158,7 @@ export function parseDomRecords(records) {
       conversationId: null,
       inReplyToStatusId: record.hasReplyingTo ? UNKNOWN_PARENT : null,
       isQuoteStatus: Boolean(record.hasQuotedTweet),
+      isRetweet: null,
     });
   }
   return tweets;

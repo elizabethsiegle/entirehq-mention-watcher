@@ -9,7 +9,8 @@
     "check": "node scripts/check.mjs",
     "install-agent": "node scripts/install-agent.mjs",
     "uninstall-agent": "node scripts/uninstall-agent.mjs",
-    "preview": "node scripts/preview.mjs"
+    "preview": "node scripts/preview.mjs",
+    "replies:preview": "node scripts/preview-replies.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
