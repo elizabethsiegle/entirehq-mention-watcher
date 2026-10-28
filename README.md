@@ -69,6 +69,12 @@ GitHub results; a fresh installation still baselines both searches silently.
 
 Config is read once at boot — after editing `.env`, re-run `install-agent`.
 
+The watcher also checks [GitHub's official status summary](https://www.githubstatus.com/api/v2/summary.json)
+at the start of every poll, including when auto-replies are off or X scraping
+fails. Its current description, affected components, and active incidents are
+logged to `watch.log`. This is a public JSON endpoint; no API key is needed.
+The check follows the watcher's poll/backoff schedule.
+
 ## GitHub outage auto-replies
 
 The watcher can reply to new GitHub outage tweets from `@lizziepika` with exactly:
@@ -93,6 +99,21 @@ Then run `npm run install-agent` to load the chosen mode.
 The browser's authenticated account must match `X_REPLY_HANDLE` before every
 send. This is separate from `X_OWN_HANDLE`, which still controls brand monitoring.
 No additional X API credentials are required.
+
+Before a batch of replies, and again immediately before each Post click, the
+bot checks githubstatus.com. It requires an official degraded/outage status,
+an affected component, or an investigating/identified incident with nonzero
+impact. Normal operation, maintenance alone, or a monitoring/resolved incident
+with otherwise healthy services does not authorize a reply. An HTTP error,
+timeout, or unexpected response also holds replies. No previous status is reused
+after a failed request. Each status request has a 10-second timeout.
+
+This confirms that GitHub reports a current disruption; it does not establish
+that a specific tweet describes the same affected service. Tweet matching and
+all existing reply exclusions still apply. Held tweets can be reconsidered
+within the one-hour freshness window if a disruption is subsequently confirmed.
+`replies:preview` shows the official status and how many matches pass this check.
+Adding this check does not enable replies: `X_REPLY_MODE=off` remains paused.
 
 Live mode establishes its own baseline on the first successful poll. It skips
 the current results and anything created before activation, then considers new
@@ -254,6 +275,7 @@ calls a day at current volume, cents a month.
 | `scripts/x-scrape.mjs` | Browserbase session, cookies, JSON interception, DOM fallback |
 | `scripts/search.mjs` | Separate Entire and GitHub searches, with source attribution |
 | `scripts/reply-match.mjs` | Outage matching, freshness, exclusions, and exact reply text |
+| `scripts/github-status.mjs` | Public githubstatus.com summary and current-disruption confirmation |
 | `scripts/replies.mjs` | Independent reply ledger, baseline, locking, and retry scheduling |
 | `scripts/x-reply.mjs` | Verified posting account, browser composer, and send confirmation |
 | `scripts/parse.mjs` | Both payload shapes → normalized records. Pure |

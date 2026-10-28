@@ -2,15 +2,20 @@ import { loadConfig, loadEnvFile } from './config.mjs';
 import { scrapeWatchSearches } from './search.mjs';
 import { REPLY_TEXT, replyCandidates, isGithubOutage } from './reply-match.mjs';
 import { prepareReply, verifyReplyAccount, withReplyPage } from './x-reply.mjs';
+import { fetchGithubStatus, describeGithubStatus } from './github-status.mjs';
 
 loadEnvFile();
 const config = loadConfig({ ...process.env, X_REPLY_MODE: 'dry-run' });
-const { tweets, loginWall } = await scrapeWatchSearches(config);
+const [githubStatus, { tweets, loginWall }] = await Promise.all([
+  fetchGithubStatus(), scrapeWatchSearches(config),
+]);
 if (loginWall) throw new Error('X login expired');
 const candidates = replyCandidates(tweets, config);
 console.log(`Posting account: @${config.replyHandle}\nExact reply: ${REPLY_TEXT}`);
+console.log(describeGithubStatus(githubStatus));
 for (const tweet of candidates) console.log(`${tweet.url}\n  ${tweet.text.replace(/\s+/g, ' ')}`);
 console.log(`${candidates.length} matching tweets from the last hour. Live activation will baseline these without replying.`);
+console.log(`${githubStatus.ok && githubStatus.active ? candidates.length : 0} pass the official GitHub Status check. Auto-reply mode in .env is unchanged.`);
 
 if (process.argv.includes('--check-composer')) {
   const tweet = candidates[0]

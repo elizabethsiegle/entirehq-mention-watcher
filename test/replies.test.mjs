@@ -23,7 +23,8 @@ function fixture(t) {
     calls.push(tweet.id);
     return { status: 'sent', replyId: `99${tweet.id}` };
   };
-  return { dataDir, send, calls, alerts, alert: async (message) => alerts.push(message) };
+  return { dataDir, send, calls, alerts, alert: async (message) => alerts.push(message),
+    checkStatus: async () => ({ ok: true, active: true, description: 'Partial outage', components: [], incidents: [] }) };
 }
 const read = (f, name = 'replies.json') => JSON.parse(readFileSync(join(f.dataDir, name)));
 
@@ -137,7 +138,59 @@ test('one poll sends at most three replies and the next can process the remainde
 });
 
 test('off mode does not create state or call transport', async () => {
-  await processReplies([tweet()], { ...config, replyMode: 'off' }, { send: () => assert.fail('must not send') });
+  await processReplies([tweet()], { ...config, replyMode: 'off' }, {
+    send: () => assert.fail('must not send'), checkStatus: () => assert.fail('reply processing stays off'),
+  });
+});
+
+test('operational or unavailable official status blocks live and dry-run replies without consuming IDs', async (t) => {
+  for (const replyMode of ['live', 'dry-run']) {
+    const f = fixture(t);
+    const settings = { ...config, replyMode };
+    await processReplies([], settings, { ...f, now: start });
+    for (const status of [
+      { ok: true, active: false, description: 'All Systems Operational', components: [], incidents: [] },
+      { ok: false, active: false, error: 'timeout' },
+    ]) {
+      await processReplies([tweet()], settings, { ...f, now: start + 2000, checkStatus: async () => status });
+      const state = read(f, replyMode === 'live' ? 'replies.json' : 'replies-dry-run.json');
+      assert.equal(state.entries['1'], undefined);
+    }
+    assert.deepEqual(f.calls, []);
+  }
+});
+
+test('a resolved outage or failed recheck after opening the composer prevents submission', async (t) => {
+  for (const current of [
+    { ok: true, active: false, description: 'All Systems Operational', components: [], incidents: [] },
+    { ok: false, active: false, error: 'timeout' },
+  ]) {
+    const f = fixture(t);
+    await processReplies([], config, { ...f, now: start });
+    let checks = 0;
+    const logs = [];
+    await processReplies([tweet()], config, {
+      ...f, now: start + 2000, log: message => logs.push(message),
+      checkStatus: async () => ++checks === 1 ? f.checkStatus() : current,
+    });
+    assert.equal(checks, 2);
+    assert.deepEqual(f.calls, []);
+    assert.equal(read(f).entries['1'], undefined);
+    assert.ok(logs.some(message => message.includes('replies held')));
+  }
+});
+
+test('official status is rechecked before each send within a batch', async (t) => {
+  const f = fixture(t);
+  await processReplies([], config, { ...f, now: start });
+  let checks = 0;
+  await processReplies([tweet(), tweet('2')], config, {
+    ...f, now: start + 2000,
+    checkStatus: async () => ++checks < 3 ? f.checkStatus()
+      : { ok: true, active: false, description: 'All Systems Operational', components: [], incidents: [] },
+  });
+  assert.deepEqual(f.calls, ['1']);
+  assert.equal(read(f).entries['2'], undefined);
 });
 
 test('shutdown stops the batch before another reply is attempted', async (t) => {

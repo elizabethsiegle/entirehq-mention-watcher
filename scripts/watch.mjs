@@ -24,6 +24,7 @@ import { scrapeWatchSearches } from './search.mjs';
 import { triage, MUTED, PRIORITY } from './tier.mjs';
 import { classify, createClient } from './classify.mjs';
 import { processReplies } from './replies.mjs';
+import { fetchGithubStatus, describeGithubStatus } from './github-status.mjs';
 
 const MAX_BACKOFF_MS = 30 * 60 * 1000;
 
@@ -315,6 +316,9 @@ async function loop() {
 
   while (!stopped) {
     let waitMs;
+    const githubStatus = await fetchGithubStatus();
+    logLine(describeGithubStatus(githubStatus));
+    if (stopped) break;
     try {
       const batch = await pollOnce();
       waitMs = batch.waitMs;

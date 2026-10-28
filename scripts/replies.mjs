@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join } from 'node:path';
 import { REPLY_TEXT, replyCandidates } from './reply-match.mjs';
 import { sendReply } from './x-reply.mjs';
+import { fetchGithubStatus, describeGithubStatus } from './github-status.mjs';
 
 export const REPLY_LIMIT_PER_POLL = 3;
 const STATUSES = new Set(['baseline', 'dry-run', 'pending', 'sent', 'retry', 'unknown', 'rejected']);
@@ -27,6 +28,7 @@ function saveState(path, state) {
 
 export async function processReplies(tweets, config, {
   dataDir, now = Date.now(), send = sendReply, log = () => {}, alert = async () => {}, shouldStop = () => false,
+  checkStatus = fetchGithubStatus,
 } = {}) {
   if (config.replyMode === 'off') return;
   mkdirSync(dataDir, { recursive: true });
@@ -56,6 +58,13 @@ export async function processReplies(tweets, config, {
         || (state.entries[tweet.id].status === 'retry' && state.entries[tweet.id].retryAt <= now))
       .slice(0, REPLY_LIMIT_PER_POLL);
 
+    if (candidates.length === 0 || shouldStop()) return;
+    const status = await checkStatus();
+    if (!status?.ok || status.active !== true) {
+      log(describeGithubStatus(status));
+      return;
+    }
+
     for (const tweet of candidates) {
       if (shouldStop()) break;
       if (config.replyMode === 'dry-run') {
@@ -65,9 +74,18 @@ export async function processReplies(tweets, config, {
         continue;
       }
       let prepared = false;
+      let statusBlocked = false;
       let result;
       try {
-        result = await send(config, tweet, () => {
+        result = await send(config, tweet, async () => {
+          // Recheck after opening the composer so a recovery during browser
+          // setup or a previous reply cannot authorize a stale outage claim.
+          const current = await checkStatus();
+          if (!current?.ok || current.active !== true || shouldStop()) {
+            statusBlocked = true;
+            log(describeGithubStatus(current));
+            throw new Error('No current GitHub disruption confirmed; reply held');
+          }
           state.entries[tweet.id] = { status: 'pending', at: now };
           saveState(path, state);
           prepared = true;
@@ -77,6 +95,7 @@ export async function processReplies(tweets, config, {
           ? { status: 'unknown', error: 'Reply interrupted after submission was prepared; inspect X before retrying' }
           : { status: 'retry', error: 'Reply preparation failed', retryAt: now + 900000 };
       }
+      if (statusBlocked) break;
       if (!['sent', 'retry', 'unknown', 'rejected'].includes(result?.status)
         || (result.status === 'retry' && !Number.isFinite(result.retryAt))) {
         result = { status: 'unknown', error: 'Invalid reply result; inspect X before retrying' };
