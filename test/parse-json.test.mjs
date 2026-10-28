@@ -40,6 +40,7 @@ test('parseTimelineJson maps a plain mention completely', () => {
     conversationId: null,
     inReplyToStatusId: null,
     isQuoteStatus: false,
+    isRetweet: false,
   });
 });
 
@@ -116,6 +117,15 @@ function tweetEntry(id, overrides = {}) {
     },
   };
 }
+
+test('parseTimelineJson preserves retweet evidence for reply exclusion', () => {
+  for (const marker of [{ retweeted_status_result: { result: {} } }, { retweeted_status_id_str: '123' }]) {
+    const payload = { data: { search_by_raw_query: { search_timeline: { timeline: {
+      instructions: [{ type: 'TimelineAddEntries', entries: [tweetEntry('1234', marker)] }],
+    } } } } };
+    assert.equal(parseTimelineJson(payload)[0].isRetweet, true);
+  }
+});
 
 test('parseTimelineJson dedupes a rest_id repeated across two TimelineAddEntries instructions', () => {
   const payload = {

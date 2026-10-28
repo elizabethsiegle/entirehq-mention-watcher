@@ -75,6 +75,15 @@ export function loadConfig(env = process.env) {
     ? env.X_GITHUB_SEARCH_QUERY.trim()
     : '("github down" OR "github is down" OR "github goes down" OR (github OR @github OR @githubstatus) (outage OR outages OR downtime OR reliability OR unreliable OR unavailable OR degraded)) -is:retweet';
 
+  const replyMode = env.X_REPLY_MODE?.trim() || 'off';
+  if (!['off', 'dry-run', 'live'].includes(replyMode)) {
+    throw new Error('X_REPLY_MODE must be off, dry-run, or live');
+  }
+  const replyHandle = (env.X_REPLY_HANDLE || '').trim().replace(/^@/, '').toLowerCase();
+  if (replyMode !== 'off' && !/^[a-z0-9_]{1,15}$/.test(replyHandle)) {
+    throw new Error('X_REPLY_HANDLE must name the account that will post replies');
+  }
+
   return {
     // Optional. Without it the LLM triage is skipped and the deterministic
     // score decides tiers alone, which is a supported mode, not a failure.
@@ -91,6 +100,8 @@ export function loadConfig(env = process.env) {
     searchQuery,
     githubSearchQuery,
     ownHandle,
+    replyMode,
+    replyHandle,
     brandDomain,
     searchUrl: `https://x.com/search?q=${encodeURIComponent(searchQuery)}&src=typed_query&f=live`,
   };

@@ -23,6 +23,7 @@ import { planAnnouncements, summarizeChain } from './chain.mjs';
 import { scrapeWatchSearches } from './search.mjs';
 import { triage, MUTED, PRIORITY } from './tier.mjs';
 import { classify, createClient } from './classify.mjs';
+import { processReplies } from './replies.mjs';
 
 const MAX_BACKOFF_MS = 30 * 60 * 1000;
 
@@ -96,6 +97,26 @@ let consecutiveFailures = 0;
 let consecutiveEmptyScrapes = 0;
 let stopped = false;
 let timer = null;
+let wakeUp = null;
+let replyFailureAlerted = false;
+
+async function handleReplies(tweets) {
+  try {
+    await processReplies(tweets, config, {
+      dataDir,
+      shouldStop: () => stopped,
+      log: logLine,
+      alert: (message) => postToSlack(config.slackWebhookUrl, buildAlertMessage(message)),
+    });
+    replyFailureAlerted = false;
+  } catch (error) {
+    logLine(`replies paused: ${error.message}`);
+    if (!replyFailureAlerted) {
+      replyFailureAlerted = true;
+      await postToSlack(config.slackWebhookUrl, buildAlertMessage(`Auto-replies paused: ${error.message}. Slack monitoring continues.`));
+    }
+  }
+}
 
 // Returns the tier decision, or null for a muted account. Muting is resolved
 // before any API call so a muted handle costs nothing to skip.
@@ -163,7 +184,7 @@ async function pollOnce() {
 
   if (loginWall) {
     await handleLoginWall();
-    return MAX_BACKOFF_MS;
+    return { waitMs: MAX_BACKOFF_MS, tweets: null };
   }
   if (store.loginWallAlerted) {
     store = setLoginWallAlerted(store, false);
@@ -218,7 +239,7 @@ async function pollOnce() {
     store = nextStore;
     saveStore(dataDir, store);
     logLine(`baseline established — ${classified.length} tweets recorded, nothing announced`);
-    return config.pollMs;
+    return { waitMs: config.pollMs, tweets };
   }
 
   if (fresh.length === 0) {
@@ -227,7 +248,7 @@ async function pollOnce() {
     store = nextStore;
     saveStore(dataDir, store);
     logLine(`no new mentions (${classified.length} tracked, via ${source})`);
-    return config.pollMs;
+    return { waitMs: config.pollMs, tweets };
   }
 
   // Persist one tweet at a time, right after its announce attempt, instead
@@ -278,7 +299,7 @@ async function pollOnce() {
     for (const entry of item.entries) store = markSeen(store, entry.tweet.id);
     saveStore(dataDir, store);
   }
-  return config.pollMs;
+  return { waitMs: config.pollMs, tweets };
 }
 
 function backoffMs() {
@@ -286,7 +307,8 @@ function backoffMs() {
 }
 
 async function loop() {
-  logLine(`watcher started — polling every ${Math.round(config.pollMs / 1000)}s — slack-only — ${projectDir}`);
+  logLine(`watcher started — polling every ${Math.round(config.pollMs / 1000)}s — ${projectDir}`);
+  logLine(`auto-replies: ${config.replyMode}${config.replyHandle ? ` as @${config.replyHandle}` : ''}`);
   logLine(`search query: ${config.searchQuery}`);
   logLine(`GitHub reliability query: ${config.githubSearchQuery}`);
   logLine(`thread budget: ${config.chainLimit} individual posts per thread per 6h, then one summary line per poll`);
@@ -294,7 +316,9 @@ async function loop() {
   while (!stopped) {
     let waitMs;
     try {
-      waitMs = await pollOnce();
+      const batch = await pollOnce();
+      waitMs = batch.waitMs;
+      if (batch.tweets && !stopped) await handleReplies(batch.tweets);
       consecutiveFailures = 0;
       if (store.backoffAlerted) {
         store = setBackoffAlerted(store, false);
@@ -320,14 +344,22 @@ async function loop() {
     }
     if (stopped) break;
     await new Promise((resolve) => {
+      wakeUp = resolve;
       timer = setTimeout(resolve, waitMs);
     });
+    timer = null;
+    wakeUp = null;
   }
 }
 
 function shutdown() {
   stopped = true;
   if (timer) clearTimeout(timer);
+  wakeUp?.();
+  logLine('shutdown requested — finishing the current poll');
+}
+
+function finishShutdown() {
   try {
     rmSync(pidFile, { force: true });
   } catch {
@@ -350,3 +382,4 @@ process.on('uncaughtException', (err) => {
 });
 
 await loop();
+finishShutdown();

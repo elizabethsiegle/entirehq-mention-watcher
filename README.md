@@ -69,6 +69,59 @@ GitHub results; a fresh installation still baselines both searches silently.
 
 Config is read once at boot — after editing `.env`, re-run `install-agent`.
 
+## GitHub outage auto-replies
+
+The watcher can reply to new GitHub outage tweets from `@lizziepika` with exactly:
+
+```text
+@goentire is up. entire.com
+```
+
+Set `X_REPLY_HANDLE=lizziepika` and choose `X_REPLY_MODE` in `.env`:
+
+- `off` (default): monitoring only.
+- `dry-run`: log eligible replies without posting. Uses separate state from live mode.
+- `live`: post replies through the existing Browserbase/X browser session.
+
+Run `npm run replies:preview -- --check-composer` to inspect matches and verify
+the account and reply composer. This command opens a composer, checks the exact
+text, and clears it without clicking Post. It writes no reply state and sends no
+Slack messages. If there are no outage matches, it can check the composer on
+another search result; that does not make that tweet eligible for a live reply.
+Then run `npm run install-agent` to load the chosen mode.
+
+The browser's authenticated account must match `X_REPLY_HANDLE` before every
+send. This is separate from `X_OWN_HANDLE`, which still controls brand monitoring.
+No additional X API credentials are required.
+
+Live mode establishes its own baseline on the first successful poll. It skips
+the current results and anything created before activation, then considers new
+tweets from the last hour. Conservative text patterns match concrete GitHub
+outages, downtime, or unavailable/degraded services; they do not prove that an
+outage is ongoing. Resolved reports, hypothetical outages, generic reliability
+comments, retweets, muted accounts, and the posting/brand accounts are excluded.
+DOM fallback records are excluded from replies because they cannot reliably
+identify retweets. Slack monitoring still receives those records.
+
+At most three replies are attempted per poll. Rate limits pause all replies for
+at least 15 minutes and honor later server reset times; daily posting limits pause
+for at least 24 hours. Other failures pause replies for 15 minutes and leave
+Slack monitoring running. Tweets older than an hour expire even while waiting.
+
+Reply state lives in `.claude/entirehq-watcher/replies.json`, independently of
+Slack's seen IDs. A pending reservation is saved before clicking Post, and only
+a response containing a reply ID and the expected parent confirms success.
+Unconfirmed sends are held as `unknown` (or `pending` after an interrupted run)
+and are never retried automatically. This prevents duplicate attempts but can
+leave a reply unsent when a crash occurs just before the click. Reply entries
+are retained without eviction; preserve this file across restarts.
+
+An interrupted process can leave `replies.lock` behind. Stop the watcher, verify
+the PID in `replies.lock/pid` is no longer running, inspect pending/unknown entries
+against the account's replies on X, then remove only the stale lock directory and
+restart. Keep the reply ledger; deleting it discards deduplication history.
+The watcher logs errors and sends Slack failure alerts.
+
 **Why cookies, not the X API.** Live search is login-gated, and API v2's
 recent-search endpoint needs a paid tier (~$200/mo). Two cookies cost nothing
 and last months; when they expire the watcher says so in Slack rather than
@@ -91,7 +144,8 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
 - **Claude Code's hooks are a fallback.** `SessionStart`/`SessionEnd` run a
   session-scoped watcher only when no agent is installed for this project. With
   the agent installed they stand down, so notifications never double up.
-- **Slack is the only channel.** Nothing prints to your terminal; diagnostics
+- **Slack receives monitoring notifications.** Optional auto-replies post to X.
+  Nothing prints to your terminal; diagnostics
   go to `.claude/entirehq-watcher/watch.log` — including when Slack is the
   thing that's broken.
 - **The handle and the domain are one query, not two polls.** The search is
@@ -183,6 +237,7 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
 | `npm run install-agent` | Install and start the daemon (idempotent) |
 | `npm run uninstall-agent` | Stop and remove it; hooks take over again |
 | `npm run preview` | Triages both live searches and prints the tiers. Posts nothing |
+| `npm run replies:preview -- --check-composer` | Preview outage replies and check the X composer without posting |
 | `npm run check` | Both live searches, dry-run, notifies nobody |
 | `npm test` | Tests config, parsers, search delivery, filter, store, notifiers, launchd, triage, chains |
 | `tail -f .claude/entirehq-watcher/watch.log` | What the daemon is doing |
@@ -198,6 +253,9 @@ calls a day at current volume, cents a month.
 | `scripts/config.mjs` | Loads and validates `.env`; native `loadEnvFile` |
 | `scripts/x-scrape.mjs` | Browserbase session, cookies, JSON interception, DOM fallback |
 | `scripts/search.mjs` | Separate Entire and GitHub searches, with source attribution |
+| `scripts/reply-match.mjs` | Outage matching, freshness, exclusions, and exact reply text |
+| `scripts/replies.mjs` | Independent reply ledger, baseline, locking, and retry scheduling |
+| `scripts/x-reply.mjs` | Verified posting account, browser composer, and send confirmation |
 | `scripts/parse.mjs` | Both payload shapes → normalized records. Pure |
 | `scripts/filter.mjs` | Drops our own posts, labels mention/reply/quote and handle/link. Pure |
 | `scripts/store.mjs` | Seen-id cache, 500-id cap, baseline and alert flags |
