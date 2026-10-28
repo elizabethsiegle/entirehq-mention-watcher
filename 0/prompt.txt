@@ -1,0 +1,13 @@
+the gates are not colored
+
+---
+
+enabled billing
+
+---
+
+ok make sure the bot is paused. stop auto-replying for now until i say so
+
+---
+
+thomas says edit the bot to also check githubstatus.com

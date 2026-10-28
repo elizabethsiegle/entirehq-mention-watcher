@@ -1,0 +1,47 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M62ASNJ2ZWD2DYZ7DCKHXKWD",
+  "strategy": "manual-commit",
+  "branch": "feat/github-outage-auto-replies",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "README.md",
+    "scripts/github-status.mjs",
+    "scripts/preview-replies.mjs",
+    "scripts/replies.mjs",
+    "scripts/watch.mjs",
+    "test/github-status.test.mjs",
+    "test/replies.test.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 156583,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3815552,
+    "output_tokens": 13809,
+    "api_call_count": 32,
+    "subagent_tokens_complete": true
+  },
+  "redaction": {
+    "replacements": 7,
+    "layers": {
+      "betterleaks": 2,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 3,
+      "credentialed_uri": 0,
+      "entropy": 3,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
