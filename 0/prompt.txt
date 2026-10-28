@@ -1,0 +1,11 @@
+make a trail to auto-respond to tweets about github outages with "@goentire is up. entire.com"
+
+---
+
+work on the trail
+
+---
+
+<send_user_message_question_reply>
+[{"answer":"@lizziepika","question":"Which X account should post the replies? The watcher currently has browser cookies for reading X; I’ll need to verify that the posting account matches your intended account.","questionItemId":"[\"request_user_input_async\",\"call_3b05bf04a701464287cf3bf84d12232d\",0]"}]
+</send_user_message_question_reply>
