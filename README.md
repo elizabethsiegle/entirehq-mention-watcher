@@ -56,18 +56,113 @@ Optional: `X_WATCH_POLL_MS` (`300000`), `X_CHAIN_LIMIT` (`3`),
 `(@entirehq OR "entire.io")`, built from the two above),
 `ANTHROPIC_API_KEY`, `X_MUTE_HANDLES`, `X_TEAM_HANDLES`.
 
-`X_GITHUB_SEARCH_QUERY` overrides the separate GitHub search, which defaults to
-`("github down" OR "github is down" OR "github goes down" OR (github OR @github OR @githubstatus) (outage OR outages OR downtime OR reliability OR unreliable OR unavailable OR degraded)) -is:retweet`.
-Results go to the same Slack webhook with a `GitHub reliability` label. These
-are public reports and discussions, not confirmation of an active outage.
-The GitHub search also requires GitHub and a reliability term in the tweet's
-own text, so a bare GitHub link is insufficient.
+`X_GITHUB_SEARCH_QUERY` overrides the separate GitHub search. Its default targets
+availability complaints, blocked push/pull/clone operations, and requests for alternatives.
+Results must fit an invitation to try entire.com for repo hosting. Slack cards show
+`GITHUB DOWN`, `HOSTING BLOCKED`, or `SEEKING ALTERNATIVE`, why the invitation fits,
+the original tweet, a reply idea, its timestamp, and a link to reply on X.
+Status accounts, resolved or historical incidents, generic reliability chatter,
+retweets, and Actions/Copilot/Pages/CI-specific complaints are excluded. An LLM
+`IGNORE` verdict also suppresses GitHub prospects; direct Entire mentions retain
+their existing triage behavior. Reply ideas do not confirm either service's uptime.
+GitHub prospects must be standalone original posts by individual indie developers,
+solo builders, or independent founders. Replies, quotes, corporate accounts and
+uncertain identities are excluded. Full post text and available author name/bio
+are reviewed for genuine personal hosting pain; jokes, quoted outage questions,
+sarcasm and hypotheticals do not qualify. GitHub delivery requires explicit LLM
+approval. If that review is unavailable, candidates remain unseen for a later
+poll instead of falling back to keyword or follower scoring.
 GitHub-only results get individual posts even when a thread has exhausted its
 routine reply budget. A tweet found by both searches is delivered only once.
+Both searches exclude tweets older than 72 hours before Slack delivery or
+auto-reply processing, even if X returns older results in its Latest search.
 On an existing installation, the first poll after this update delivers unseen
 GitHub results; a fresh installation still baselines both searches silently.
 
 Config is read once at boot — after editing `.env`, re-run `install-agent`.
+
+The watcher also checks [GitHub's official status summary](https://www.githubstatus.com/api/v2/summary.json)
+at the start of every poll, including when auto-replies are off or X scraping
+fails. Its current description, affected components, and active incidents are
+logged to `watch.log`. This is a public JSON endpoint; no API key is needed.
+The check follows the watcher's poll/backoff schedule.
+Transient network errors, timeouts, invalid JSON, HTTP 408/429, and server errors
+get up to three attempts, each with a 10-second timeout, separated by 0.5 and 1
+second. Failed checks log the final error, network cause when available, and
+attempt count. An earlier successful result never substitutes for a fresh check.
+GitHub reliability posts in Slack also show that poll's official status, affected
+services/incidents, a link to githubstatus.com, and the check time. This includes
+Entire mentions about GitHub reliability and collapsed threads containing them.
+Failed checks show “current status unknown.” These annotations describe the
+status at check time; they do not verify each tweet's claim or enable replies.
+
+## GitHub outage auto-replies
+
+The watcher can reply to new GitHub outage tweets from `@lizziepika` with exactly:
+
+```text
+@goentire is up. entire.com
+```
+
+Set `X_REPLY_HANDLE=lizziepika` and choose `X_REPLY_MODE` in `.env`:
+
+- `off` (default): monitoring only.
+- `dry-run`: log eligible replies without posting. Uses separate state from live mode.
+- `live`: post replies through the existing Browserbase/X browser session.
+
+Run `npm run replies:preview -- --check-composer` to inspect matches and verify
+the account and reply composer. This command opens a composer, checks the exact
+text, and clears it without clicking Post. It writes no reply state and sends no
+Slack messages. If there are no outage matches, it can check the composer on
+another search result; that does not make that tweet eligible for a live reply.
+Then run `npm run install-agent` to load the chosen mode.
+
+The browser's authenticated account must match `X_REPLY_HANDLE` before every
+send. This is separate from `X_OWN_HANDLE`, which still controls brand monitoring.
+No additional X API credentials are required.
+
+Before a batch of replies, and again immediately before each Post click, the
+bot checks githubstatus.com. It requires an official degraded/outage status,
+an affected component, or an investigating/identified incident with nonzero
+impact. Normal operation, maintenance alone, or a monitoring/resolved incident
+with otherwise healthy services does not authorize a reply. An HTTP error,
+timeout, or unexpected response also holds replies. No previous status is reused
+after a failed request. Each status request has a 10-second timeout.
+
+This confirms that GitHub reports a current disruption; it does not establish
+that a specific tweet describes the same affected service. Tweet matching and
+all existing reply exclusions still apply. Held tweets can be reconsidered
+within the one-hour freshness window if a disruption is subsequently confirmed.
+`replies:preview` shows the official status and how many matches pass this check.
+Adding this check does not enable replies: `X_REPLY_MODE=off` remains paused.
+
+Live mode establishes its own baseline on the first successful poll. It skips
+the current results and anything created before activation, then considers new
+tweets from the last hour. Conservative text patterns match concrete GitHub
+outages, downtime, or unavailable/degraded services; they do not prove that an
+outage is ongoing. Resolved reports, hypothetical outages, generic reliability
+comments, retweets, muted accounts, and the posting/brand accounts are excluded.
+DOM fallback records are excluded from replies because they cannot reliably
+identify retweets. Slack monitoring still receives those records.
+
+At most three replies are attempted per poll. Rate limits pause all replies for
+at least 15 minutes and honor later server reset times; daily posting limits pause
+for at least 24 hours. Other failures pause replies for 15 minutes and leave
+Slack monitoring running. Tweets older than an hour expire even while waiting.
+
+Reply state lives in `.claude/entirehq-watcher/replies.json`, independently of
+Slack's seen IDs. A pending reservation is saved before clicking Post, and only
+a response containing a reply ID and the expected parent confirms success.
+Unconfirmed sends are held as `unknown` (or `pending` after an interrupted run)
+and are never retried automatically. This prevents duplicate attempts but can
+leave a reply unsent when a crash occurs just before the click. Reply entries
+are retained without eviction; preserve this file across restarts.
+
+An interrupted process can leave `replies.lock` behind. Stop the watcher, verify
+the PID in `replies.lock/pid` is no longer running, inspect pending/unknown entries
+against the account's replies on X, then remove only the stale lock directory and
+restart. Keep the reply ledger; deleting it discards deduplication history.
+The watcher logs errors and sends Slack failure alerts.
 
 **Why cookies, not the X API.** Live search is login-gated, and API v2's
 recent-search endpoint needs a paid tier (~$200/mo). Two cookies cost nothing
@@ -91,7 +186,8 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
 - **Claude Code's hooks are a fallback.** `SessionStart`/`SessionEnd` run a
   session-scoped watcher only when no agent is installed for this project. With
   the agent installed they stand down, so notifications never double up.
-- **Slack is the only channel.** Nothing prints to your terminal; diagnostics
+- **Slack receives monitoring notifications.** Optional auto-replies post to X.
+  Nothing prints to your terminal; diagnostics
   go to `.claude/entirehq-watcher/watch.log` — including when Slack is the
   thing that's broken.
 - **The handle and the domain are one query, not two polls.** The search is
@@ -183,6 +279,7 @@ launchd (RunAtLoad, KeepAlive) → watch.mjs
 | `npm run install-agent` | Install and start the daemon (idempotent) |
 | `npm run uninstall-agent` | Stop and remove it; hooks take over again |
 | `npm run preview` | Triages both live searches and prints the tiers. Posts nothing |
+| `npm run replies:preview -- --check-composer` | Preview outage replies and check the X composer without posting |
 | `npm run check` | Both live searches, dry-run, notifies nobody |
 | `npm test` | Tests config, parsers, search delivery, filter, store, notifiers, launchd, triage, chains |
 | `tail -f .claude/entirehq-watcher/watch.log` | What the daemon is doing |
@@ -198,6 +295,10 @@ calls a day at current volume, cents a month.
 | `scripts/config.mjs` | Loads and validates `.env`; native `loadEnvFile` |
 | `scripts/x-scrape.mjs` | Browserbase session, cookies, JSON interception, DOM fallback |
 | `scripts/search.mjs` | Separate Entire and GitHub searches, with source attribution |
+| `scripts/reply-match.mjs` | Outage matching, freshness, exclusions, and exact reply text |
+| `scripts/github-status.mjs` | Public githubstatus.com summary and current-disruption confirmation |
+| `scripts/replies.mjs` | Independent reply ledger, baseline, locking, and retry scheduling |
+| `scripts/x-reply.mjs` | Verified posting account, browser composer, and send confirmation |
 | `scripts/parse.mjs` | Both payload shapes → normalized records. Pure |
 | `scripts/filter.mjs` | Drops our own posts, labels mention/reply/quote and handle/link. Pure |
 | `scripts/store.mjs` | Seen-id cache, 500-id cap, baseline and alert flags |

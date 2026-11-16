@@ -5,6 +5,7 @@ import { triage, MUTED, PRIORITY } from './tier.mjs';
 import { classify, createClient } from './classify.mjs';
 import { planAnnouncements, summarizeChain, chainIdOf } from './chain.mjs';
 import { printWarning } from './notify-terminal.mjs';
+import { githubOpportunity } from './github-opportunity.mjs';
 
 loadEnvFile(getProjectDir());
 
@@ -38,10 +39,11 @@ for (const tweet of classified) {
     calls += 1;
     if (!verdict.ok) console.log(`  !! classify failed: ${verdict.error}`);
   }
-  rows.push({ tweet, decision: triage(tweet, { mutedHandles, teamHandles, verdict }), verdict });
+  const deferred = tweet.matchedVia === 'github' && !verdict?.ok;
+  rows.push({ tweet, decision: triage(tweet, { mutedHandles, teamHandles, verdict }), verdict, deferred });
 }
 
-for (const { tweet, decision, verdict } of rows) {
+for (const { tweet, decision, verdict, deferred } of rows) {
   const mark = decision.tier === PRIORITY ? '*' : decision.tier === MUTED ? '-' : ' ';
   const llm = (verdict?.ok ? verdict.tier : 'n/a').padEnd(8);
   console.log(
@@ -51,6 +53,9 @@ for (const { tweet, decision, verdict } of rows) {
       tweet.text.replace(/\s+/g, ' ').slice(0, 56),
   );
   if (verdict?.ok && verdict.reason) console.log(`${' '.repeat(15)}${verdict.reason}`);
+  if (deferred) console.log('  Deferred: full-context indie-developer review unavailable; no Slack delivery.');
+  const opportunity = tweet.matchedVia === 'github' ? githubOpportunity(tweet) : null;
+  if (opportunity) console.log(`  ${opportunity.tag}: ${opportunity.summary}\n  Reply idea: ${opportunity.reply}`);
 }
 
 const counts = rows.reduce((acc, r) => ({ ...acc, [r.decision.tier]: (acc[r.decision.tier] || 0) + 1 }), {});
@@ -60,7 +65,7 @@ console.log(`\ntiers: ${JSON.stringify(counts)} | classifier calls: ${calls}`);
 // reads no store, so this is one poll on a quiet thread history, not what a
 // running watcher would do mid-flood.
 const plan = planAnnouncements(
-  rows.filter((r) => r.decision.tier !== MUTED).map(({ tweet, decision }) => ({ tweet, decision })),
+  rows.filter((r) => !r.deferred && r.decision.tier !== MUTED).map(({ tweet, decision }) => ({ tweet, decision })),
   { limit: config.chainLimit },
 );
 

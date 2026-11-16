@@ -18,11 +18,14 @@ import {
   buildChainMessage,
   buildAlertMessage,
   postToSlack,
+  withGithubStatus,
 } from './notify-slack.mjs';
 import { planAnnouncements, summarizeChain } from './chain.mjs';
-import { scrapeWatchSearches } from './search.mjs';
+import { scrapeWatchSearches, isGithubReliabilityMention } from './search.mjs';
 import { triage, MUTED, PRIORITY } from './tier.mjs';
 import { classify, createClient } from './classify.mjs';
+import { processReplies } from './replies.mjs';
+import { fetchGithubStatus, describeGithubStatus } from './github-status.mjs';
 
 const MAX_BACKOFF_MS = 30 * 60 * 1000;
 
@@ -96,6 +99,26 @@ let consecutiveFailures = 0;
 let consecutiveEmptyScrapes = 0;
 let stopped = false;
 let timer = null;
+let wakeUp = null;
+let replyFailureAlerted = false;
+
+async function handleReplies(tweets) {
+  try {
+    await processReplies(tweets, config, {
+      dataDir,
+      shouldStop: () => stopped,
+      log: logLine,
+      alert: (message) => postToSlack(config.slackWebhookUrl, buildAlertMessage(message)),
+    });
+    replyFailureAlerted = false;
+  } catch (error) {
+    logLine(`replies paused: ${error.message}`);
+    if (!replyFailureAlerted) {
+      replyFailureAlerted = true;
+      await postToSlack(config.slackWebhookUrl, buildAlertMessage(`Auto-replies paused: ${error.message}. Slack monitoring continues.`));
+    }
+  }
+}
 
 // Returns the tier decision, or null for a muted account. Muting is resolved
 // before any API call so a muted handle costs nothing to skip.
@@ -107,19 +130,33 @@ async function decideOn(tweet) {
   }
 
   const verdict = anthropic ? await classify(tweet, { client: anthropic }) : null;
+  if (tweet.matchedVia === 'github' && !verdict?.ok) {
+    logLine(`GitHub prospect deferred: @${tweet.author} — full-context review unavailable; retry next poll`);
+    return { defer: true };
+  }
   if (verdict && !verdict.ok) logLine(`triage degraded (${verdict.error}) — score only`);
 
-  return triage(tweet, {
+  const decision = triage(tweet, {
     mutedHandles: config.mutedHandles,
     teamHandles: config.teamHandles,
     verdict,
   });
+  return decision.tier === MUTED ? null : decision;
 }
 
-async function announce(tweet, decision) {
+function statusForTweets(payload, tweets, githubStatus) {
+  return tweets.some((tweet) => tweet.matchedVia === 'github' || isGithubReliabilityMention(tweet))
+    ? withGithubStatus(payload, githubStatus)
+    : payload;
+}
+
+async function announce(tweet, decision, githubStatus) {
   const result = await postToSlack(
     config.slackWebhookUrl,
-    buildTweetMessage(tweet, decision, { handle: config.ownHandle, domain: config.brandDomain }),
+    statusForTweets(
+      buildTweetMessage(tweet, decision, { handle: config.ownHandle, domain: config.brandDomain }),
+      [tweet], githubStatus,
+    ),
   );
   const label = `${decision.tier}${decision.tier === PRIORITY ? ' \u2605' : ''} score=${decision.score}`;
   if (result.ok) {
@@ -130,9 +167,10 @@ async function announce(tweet, decision) {
   return result.ok;
 }
 
-async function announceChain(chainId, entries) {
+async function announceChain(chainId, entries, githubStatus) {
   const summary = summarizeChain(entries);
-  const result = await postToSlack(config.slackWebhookUrl, buildChainMessage(summary));
+  const result = await postToSlack(config.slackWebhookUrl,
+    statusForTweets(buildChainMessage(summary), entries.map((entry) => entry.tweet), githubStatus));
   if (result.ok) {
     logLine(`slack ok [chain]: ${summary.count} collapsed from ${chainId}`);
   } else {
@@ -158,12 +196,12 @@ async function handleLoginWall() {
   }
 }
 
-async function pollOnce() {
+async function pollOnce(githubStatus) {
   const { source, tweets, loginWall, searches } = await scrapeWatchSearches(config);
 
   if (loginWall) {
     await handleLoginWall();
-    return MAX_BACKOFF_MS;
+    return { waitMs: MAX_BACKOFF_MS, tweets: null };
   }
   if (store.loginWallAlerted) {
     store = setLoginWallAlerted(store, false);
@@ -188,7 +226,7 @@ async function pollOnce() {
   // that suddenly scrapes zero raw tweets, repeatedly, looks like a broken
   // extractor or an exhausted Browserbase quota rather than a quiet account.
   const hadNonEmptyBaseline = store.baselined && store.seen.length > 0;
-  if (tweets.length === 0 && hadNonEmptyBaseline) {
+  if (searches.every((search) => search.tweets.length === 0) && hadNonEmptyBaseline) {
     consecutiveEmptyScrapes += 1;
   } else {
     consecutiveEmptyScrapes = 0;
@@ -218,7 +256,7 @@ async function pollOnce() {
     store = nextStore;
     saveStore(dataDir, store);
     logLine(`baseline established — ${classified.length} tweets recorded, nothing announced`);
-    return config.pollMs;
+    return { waitMs: config.pollMs, tweets };
   }
 
   if (fresh.length === 0) {
@@ -227,7 +265,7 @@ async function pollOnce() {
     store = nextStore;
     saveStore(dataDir, store);
     logLine(`no new mentions (${classified.length} tracked, via ${source})`);
-    return config.pollMs;
+    return { waitMs: config.pollMs, tweets };
   }
 
   // Persist one tweet at a time, right after its announce attempt, instead
@@ -244,6 +282,7 @@ async function pollOnce() {
   const decided = [];
   for (const tweet of fresh) {
     const decision = await decideOn(tweet);
+    if (decision?.defer) continue;
     if (!decision) {
       store = markSeen(store, tweet.id);
       saveStore(dataDir, store);
@@ -263,7 +302,7 @@ async function pollOnce() {
 
   for (const item of plan) {
     if (item.type === 'post') {
-      if (!(await announce(item.tweet, item.decision))) continue;
+      if (!(await announce(item.tweet, item.decision, githubStatus))) continue;
       store = markSeen(store, item.tweet.id);
       // Charged only after Slack accepts it, so a bad Slack day cannot spend
       // a thread's budget on posts nobody saw.
@@ -272,13 +311,13 @@ async function pollOnce() {
       continue;
     }
 
-    if (!(await announceChain(item.chainId, item.entries))) continue;
+    if (!(await announceChain(item.chainId, item.entries, githubStatus))) continue;
     // The summary is the delivery for every mention in it, so they are only
     // seen once it lands.
     for (const entry of item.entries) store = markSeen(store, entry.tweet.id);
     saveStore(dataDir, store);
   }
-  return config.pollMs;
+  return { waitMs: config.pollMs, tweets };
 }
 
 function backoffMs() {
@@ -286,15 +325,21 @@ function backoffMs() {
 }
 
 async function loop() {
-  logLine(`watcher started — polling every ${Math.round(config.pollMs / 1000)}s — slack-only — ${projectDir}`);
+  logLine(`watcher started — polling every ${Math.round(config.pollMs / 1000)}s — ${projectDir}`);
+  logLine(`auto-replies: ${config.replyMode}${config.replyHandle ? ` as @${config.replyHandle}` : ''}`);
   logLine(`search query: ${config.searchQuery}`);
   logLine(`GitHub reliability query: ${config.githubSearchQuery}`);
   logLine(`thread budget: ${config.chainLimit} individual posts per thread per 6h, then one summary line per poll`);
 
   while (!stopped) {
     let waitMs;
+    const githubStatus = await fetchGithubStatus();
+    logLine(describeGithubStatus(githubStatus));
+    if (stopped) break;
     try {
-      waitMs = await pollOnce();
+      const batch = await pollOnce(githubStatus);
+      waitMs = batch.waitMs;
+      if (batch.tweets && !stopped) await handleReplies(batch.tweets);
       consecutiveFailures = 0;
       if (store.backoffAlerted) {
         store = setBackoffAlerted(store, false);
@@ -320,14 +365,22 @@ async function loop() {
     }
     if (stopped) break;
     await new Promise((resolve) => {
+      wakeUp = resolve;
       timer = setTimeout(resolve, waitMs);
     });
+    timer = null;
+    wakeUp = null;
   }
 }
 
 function shutdown() {
   stopped = true;
   if (timer) clearTimeout(timer);
+  wakeUp?.();
+  logLine('shutdown requested — finishing the current poll');
+}
+
+function finishShutdown() {
   try {
     rmSync(pidFile, { force: true });
   } catch {
@@ -350,3 +403,4 @@ process.on('uncaughtException', (err) => {
 });
 
 await loop();
+finishShutdown();

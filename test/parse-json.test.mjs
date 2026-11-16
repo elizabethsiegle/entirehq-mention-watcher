@@ -30,6 +30,7 @@ test('parseTimelineJson maps a plain mention completely', () => {
   assert.deepEqual(first, {
     id: '1958000000000000001',
     author: 'somedev',
+    authorProfile: { name: 'Some Dev', bio: null, verifiedType: null },
     text: 'hey @entirehq does this work with self-hosted runners?',
     url: 'https://x.com/somedev/status/1958000000000000001',
     createdAt: '2026-08-18T14:02:11.000Z',
@@ -40,7 +41,20 @@ test('parseTimelineJson maps a plain mention completely', () => {
     conversationId: null,
     inReplyToStatusId: null,
     isQuoteStatus: false,
+    isRetweet: false,
   });
+});
+
+test('JSON preserves the full long post and author context for semantic review', () => {
+  const payload = structuredClone(fixture);
+  const result = payload.data.search_by_raw_query.search_timeline.timeline.instructions[0].entries[0].content.itemContent.tweet_results.result;
+  result.note_tweet = { note_tweet_results: { result: { text: 'Full post: GitHub is down? No, that was just a joke about Slack.' } } };
+  result.core.user_results.result.profile_bio = { description: 'Indie developer building my own apps' };
+  result.core.user_results.result.verification = { verified_type: 'Business' };
+  const [parsed] = parseTimelineJson(payload);
+  assert.equal(parsed.text, result.note_tweet.note_tweet_results.result.text);
+  assert.equal(parsed.authorProfile.bio, 'Indie developer building my own apps');
+  assert.equal(parsed.authorProfile.verifiedType, 'Business');
 });
 
 test('parseTimelineJson unwraps TweetWithVisibilityResults and the legacy user shape', () => {
@@ -116,6 +130,15 @@ function tweetEntry(id, overrides = {}) {
     },
   };
 }
+
+test('parseTimelineJson preserves retweet evidence for reply exclusion', () => {
+  for (const marker of [{ retweeted_status_result: { result: {} } }, { retweeted_status_id_str: '123' }]) {
+    const payload = { data: { search_by_raw_query: { search_timeline: { timeline: {
+      instructions: [{ type: 'TimelineAddEntries', entries: [tweetEntry('1234', marker)] }],
+    } } } } };
+    assert.equal(parseTimelineJson(payload)[0].isRetweet, true);
+  }
+});
 
 test('parseTimelineJson dedupes a rest_id repeated across two TimelineAddEntries instructions', () => {
   const payload = {

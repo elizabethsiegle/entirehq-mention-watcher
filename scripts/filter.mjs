@@ -63,6 +63,7 @@ export function filterAndClassify(rawTweets, { ownHandle, brandDomain } = {}) {
       followers: t.followers ?? null,
       followsUs: t.followsUs ?? null,
       verified: t.verified ?? false,
+      ...(t.authorProfile ? { authorProfile: t.authorProfile } : {}),
     }))
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }

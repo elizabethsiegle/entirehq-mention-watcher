@@ -35,6 +35,11 @@ function authorSignal(tweet) {
     // not say, which must not be read as "does not follow us".
     followsUs: typeof followedBy === 'boolean' ? followedBy : null,
     verified: Boolean(user?.is_blue_verified || user?.verification?.verified),
+    authorProfile: {
+      name: user?.core?.name || user?.legacy?.name || null,
+      bio: user?.profile_bio?.description || user?.legacy?.description || null,
+      verifiedType: user?.verification?.verified_type || user?.verified_type || user?.legacy?.verified_type || null,
+    },
   };
 }
 
@@ -98,7 +103,7 @@ export function parseTimelineJson(payload) {
     tweets.push({
       id: idStr,
       author,
-      text: legacy.full_text ?? '',
+      text: tweet.note_tweet?.note_tweet_results?.result?.text ?? legacy.full_text ?? '',
       url: `https://x.com/${author}/status/${id}`,
       createdAt,
       links: linksOf(legacy),
@@ -108,6 +113,7 @@ export function parseTimelineJson(payload) {
       conversationId: typeof legacy.conversation_id_str === 'string' ? legacy.conversation_id_str : null,
       inReplyToStatusId: legacy.in_reply_to_status_id_str ?? null,
       isQuoteStatus: Boolean(legacy.is_quote_status),
+      isRetweet: Boolean(legacy.retweeted_status_result || legacy.retweeted_status_id_str),
       ...authorSignal(tweet),
     });
   }
@@ -157,6 +163,7 @@ export function parseDomRecords(records) {
       conversationId: null,
       inReplyToStatusId: record.hasReplyingTo ? UNKNOWN_PARENT : null,
       isQuoteStatus: Boolean(record.hasQuotedTweet),
+      isRetweet: null,
     });
   }
   return tweets;
