@@ -56,14 +56,19 @@ Optional: `X_WATCH_POLL_MS` (`300000`), `X_CHAIN_LIMIT` (`3`),
 `(@entirehq OR "entire.io")`, built from the two above),
 `ANTHROPIC_API_KEY`, `X_MUTE_HANDLES`, `X_TEAM_HANDLES`.
 
-`X_GITHUB_SEARCH_QUERY` overrides the separate GitHub search, which defaults to
-`("github down" OR "github is down" OR "github goes down" OR (github OR @github OR @githubstatus) (outage OR outages OR downtime OR reliability OR unreliable OR unavailable OR degraded)) -is:retweet`.
-Results go to the same Slack webhook with a `GitHub reliability` label. These
-are public reports and discussions, not confirmation of an active outage.
-The GitHub search also requires GitHub and a reliability term in the tweet's
-own text, so a bare GitHub link is insufficient.
+`X_GITHUB_SEARCH_QUERY` overrides the separate GitHub search. Its default targets
+availability complaints, blocked push/pull/clone operations, and requests for alternatives.
+Results must fit an invitation to try entire.com for repo hosting. Slack cards show
+`GITHUB DOWN`, `HOSTING BLOCKED`, or `SEEKING ALTERNATIVE`, why the invitation fits,
+the original tweet, a reply idea, its timestamp, and a link to reply on X.
+Status accounts, resolved or historical incidents, generic reliability chatter,
+retweets, and Actions/Copilot/Pages/CI-specific complaints are excluded. An LLM
+`IGNORE` verdict also suppresses GitHub prospects; direct Entire mentions retain
+their existing triage behavior. Reply ideas do not confirm either service's uptime.
 GitHub-only results get individual posts even when a thread has exhausted its
 routine reply budget. A tweet found by both searches is delivered only once.
+Both searches exclude tweets older than 72 hours before Slack delivery or
+auto-reply processing, even if X returns older results in its Latest search.
 On an existing installation, the first poll after this update delivers unseen
 GitHub results; a fresh installation still baselines both searches silently.
 
@@ -74,6 +79,15 @@ at the start of every poll, including when auto-replies are off or X scraping
 fails. Its current description, affected components, and active incidents are
 logged to `watch.log`. This is a public JSON endpoint; no API key is needed.
 The check follows the watcher's poll/backoff schedule.
+Transient network errors, timeouts, invalid JSON, HTTP 408/429, and server errors
+get up to three attempts, each with a 10-second timeout, separated by 0.5 and 1
+second. Failed checks log the final error, network cause when available, and
+attempt count. An earlier successful result never substitutes for a fresh check.
+GitHub reliability posts in Slack also show that poll's official status, affected
+services/incidents, a link to githubstatus.com, and the check time. This includes
+Entire mentions about GitHub reliability and collapsed threads containing them.
+Failed checks show “current status unknown.” These annotations describe the
+status at check time; they do not verify each tweet's claim or enable replies.
 
 ## GitHub outage auto-replies
 

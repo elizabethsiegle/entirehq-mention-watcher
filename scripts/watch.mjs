@@ -18,9 +18,10 @@ import {
   buildChainMessage,
   buildAlertMessage,
   postToSlack,
+  withGithubStatus,
 } from './notify-slack.mjs';
 import { planAnnouncements, summarizeChain } from './chain.mjs';
-import { scrapeWatchSearches } from './search.mjs';
+import { scrapeWatchSearches, isGithubReliabilityMention } from './search.mjs';
 import { triage, MUTED, PRIORITY } from './tier.mjs';
 import { classify, createClient } from './classify.mjs';
 import { processReplies } from './replies.mjs';
@@ -138,10 +139,19 @@ async function decideOn(tweet) {
   });
 }
 
-async function announce(tweet, decision) {
+function statusForTweets(payload, tweets, githubStatus) {
+  return tweets.some((tweet) => tweet.matchedVia === 'github' || isGithubReliabilityMention(tweet))
+    ? withGithubStatus(payload, githubStatus)
+    : payload;
+}
+
+async function announce(tweet, decision, githubStatus) {
   const result = await postToSlack(
     config.slackWebhookUrl,
-    buildTweetMessage(tweet, decision, { handle: config.ownHandle, domain: config.brandDomain }),
+    statusForTweets(
+      buildTweetMessage(tweet, decision, { handle: config.ownHandle, domain: config.brandDomain }),
+      [tweet], githubStatus,
+    ),
   );
   const label = `${decision.tier}${decision.tier === PRIORITY ? ' \u2605' : ''} score=${decision.score}`;
   if (result.ok) {
@@ -152,9 +162,10 @@ async function announce(tweet, decision) {
   return result.ok;
 }
 
-async function announceChain(chainId, entries) {
+async function announceChain(chainId, entries, githubStatus) {
   const summary = summarizeChain(entries);
-  const result = await postToSlack(config.slackWebhookUrl, buildChainMessage(summary));
+  const result = await postToSlack(config.slackWebhookUrl,
+    statusForTweets(buildChainMessage(summary), entries.map((entry) => entry.tweet), githubStatus));
   if (result.ok) {
     logLine(`slack ok [chain]: ${summary.count} collapsed from ${chainId}`);
   } else {
@@ -180,7 +191,7 @@ async function handleLoginWall() {
   }
 }
 
-async function pollOnce() {
+async function pollOnce(githubStatus) {
   const { source, tweets, loginWall, searches } = await scrapeWatchSearches(config);
 
   if (loginWall) {
@@ -210,7 +221,7 @@ async function pollOnce() {
   // that suddenly scrapes zero raw tweets, repeatedly, looks like a broken
   // extractor or an exhausted Browserbase quota rather than a quiet account.
   const hadNonEmptyBaseline = store.baselined && store.seen.length > 0;
-  if (tweets.length === 0 && hadNonEmptyBaseline) {
+  if (searches.every((search) => search.tweets.length === 0) && hadNonEmptyBaseline) {
     consecutiveEmptyScrapes += 1;
   } else {
     consecutiveEmptyScrapes = 0;
@@ -285,7 +296,7 @@ async function pollOnce() {
 
   for (const item of plan) {
     if (item.type === 'post') {
-      if (!(await announce(item.tweet, item.decision))) continue;
+      if (!(await announce(item.tweet, item.decision, githubStatus))) continue;
       store = markSeen(store, item.tweet.id);
       // Charged only after Slack accepts it, so a bad Slack day cannot spend
       // a thread's budget on posts nobody saw.
@@ -294,7 +305,7 @@ async function pollOnce() {
       continue;
     }
 
-    if (!(await announceChain(item.chainId, item.entries))) continue;
+    if (!(await announceChain(item.chainId, item.entries, githubStatus))) continue;
     // The summary is the delivery for every mention in it, so they are only
     // seen once it lands.
     for (const entry of item.entries) store = markSeen(store, entry.tweet.id);
@@ -320,7 +331,7 @@ async function loop() {
     logLine(describeGithubStatus(githubStatus));
     if (stopped) break;
     try {
-      const batch = await pollOnce();
+      const batch = await pollOnce(githubStatus);
       waitMs = batch.waitMs;
       if (batch.tweets && !stopped) await handleReplies(batch.tweets);
       consecutiveFailures = 0;

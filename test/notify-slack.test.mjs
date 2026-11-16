@@ -8,6 +8,7 @@ import {
   buildAlertMessage,
   escapeSlack,
   postToSlack,
+  withGithubStatus,
 } from '../scripts/notify-slack.mjs';
 
 const tweet = {
@@ -18,6 +19,59 @@ const tweet = {
   createdAt: '2026-08-18T14:02:11.000Z',
   kind: 'reply',
 };
+
+const githubStatus = {
+  ok: true, active: false, description: 'All Systems Operational',
+  components: [], incidents: [], checkedAt: '2026-10-29T04:32:41.000Z',
+};
+
+test('both tweet tiers show official status, source and check time in Slack', async (t) => {
+  const hook = await stubWebhook([200, 200]);
+  t.after(() => hook.close());
+  for (const tier of ['routine', 'priority']) {
+    const original = buildTweetMessage({ ...tweet, matchedVia: 'github' }, { tier });
+    const payload = withGithubStatus(original, githubStatus);
+    await postToSlack(hook.url, payload);
+    assert.equal(payload.blocks.length, original.blocks.length + 1);
+    assert.deepEqual(payload.blocks.slice(0, -1), original.blocks);
+  }
+  for (const payload of hook.received) {
+    assert.match(payload.text, /githubstatus\.com: All Systems Operational/);
+    const line = payload.blocks.at(-1).elements[0].text;
+    assert.match(line, /<https:\/\/www\.githubstatus\.com\/\|githubstatus.com>/);
+    assert.match(line, /no current disruption confirmed/);
+    assert.match(line, /checked <!date\^1793248361\^/);
+    assert.match(line, /2026-10-29T04:32:41.000Z/);
+  }
+});
+
+test('confirmed disruptions include escaped component and incident names', () => {
+  const payload = withGithubStatus(buildTweetMessage(tweet), {
+    ...githubStatus, active: true, description: 'Degraded Performance',
+    components: [{ name: 'Git Operations' }],
+    incidents: [{ name: '<https://example.test|incident> & API failures' }],
+  });
+  const line = payload.blocks.at(-1).elements[0].text;
+  assert.match(line, /current disruption confirmed/);
+  assert.match(line, /Git Operations/);
+  assert.match(line, /&lt;https:\/\/example.test\|incident&gt; &amp; API failures/);
+  assert.doesNotMatch(line, /<https:\/\/example.test/);
+});
+
+test('failed or missing checks show unknown status without implying healthy services', () => {
+  for (const status of [undefined, { ok: false, checkedAt: githubStatus.checkedAt }]) {
+    const payload = withGithubStatus(buildTweetMessage(tweet), status);
+    assert.match(payload.text, /Check unavailable — current status unknown/);
+    assert.doesNotMatch(JSON.stringify(payload), /All Systems Operational|no current disruption confirmed|NaN/);
+  }
+});
+
+test('collapsed threads can carry official status without losing their summary', () => {
+  const original = buildChainMessage({ count: 2, authors: ['dev'], url: tweet.url });
+  const payload = withGithubStatus(original, githubStatus);
+  assert.deepEqual(payload.blocks[0], original.blocks[0]);
+  assert.match(payload.blocks[1].elements[0].text, /All Systems Operational/);
+});
 
 // Starts a throwaway webhook receiver. `statuses` is consumed one entry per
 // request, so [500, 200] models "fails once, then succeeds".

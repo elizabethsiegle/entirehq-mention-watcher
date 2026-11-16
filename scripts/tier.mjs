@@ -19,6 +19,10 @@ export function decideTier({ tweet, score, reasons, verdict, mutedHandles = [], 
   const combined = [...reasons];
   if (verdict?.ok && verdict.reason) combined.push(verdict.reason);
 
+  if (tweet.matchedVia === 'github' && llm === 'IGNORE') {
+    return { tier: MUTED, reasons: combined, verdict: llm };
+  }
+
   // A team member's own reply is a receipt, never a call to action.
   if (onTeam) return { tier: ROUTINE, reasons: combined, verdict: llm };
 

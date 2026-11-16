@@ -1,3 +1,5 @@
+import { setTimeout as delay } from 'node:timers/promises';
+
 export const GITHUB_STATUS_URL = 'https://www.githubstatus.com/api/v2/summary.json';
 
 const INDICATORS = new Set(['none', 'minor', 'major', 'critical', 'maintenance']);
@@ -29,16 +31,36 @@ export function parseGithubStatus(body) {
   };
 }
 
-export async function fetchGithubStatus({ fetchImpl = fetch, timeoutMs = 10000 } = {}) {
-  try {
-    const response = await fetchImpl(GITHUB_STATUS_URL, {
-      headers: { accept: 'application/json', 'cache-control': 'no-cache' },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) throw new Error(`GitHub Status returned HTTP ${response.status}`);
-    return { ...parseGithubStatus(await response.json()), checkedAt: new Date().toISOString() };
-  } catch (error) {
-    return { ok: false, active: false, description: 'GitHub Status unavailable', error: error.message };
+export async function fetchGithubStatus({ fetchImpl = fetch, timeoutMs = 10000, sleep = delay } = {}) {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let retryable = true;
+    try {
+      const response = await fetchImpl(GITHUB_STATUS_URL, {
+        headers: { accept: 'application/json', 'cache-control': 'no-cache' },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) {
+        retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+        await response.body?.cancel();
+        throw new Error(`GitHub Status returned HTTP ${response.status}`);
+      }
+      const body = await response.json();
+      retryable = false;
+      return { ...parseGithubStatus(body), checkedAt: new Date().toISOString() };
+    } catch (error) {
+      if (retryable && attempt < maxAttempts) {
+        await sleep(500 * 2 ** (attempt - 1));
+        continue;
+      }
+      const cause = error?.cause?.code || error?.cause?.message;
+      const detail = `${error?.message || String(error)}${cause ? ` (${cause})` : ''}`;
+      return {
+        ok: false, active: false, description: 'GitHub Status unavailable',
+        error: `${detail}; ${attempt} attempt${attempt === 1 ? '' : 's'}`,
+        checkedAt: new Date().toISOString(),
+      };
+    }
   }
 }
 

@@ -1,4 +1,5 @@
 import { MATCH_LINK, MATCH_BOTH, MATCH_GITHUB } from './filter.mjs';
+import { githubOpportunity } from './github-opportunity.mjs';
 
 const VERB = {
   mention: 'mentioned',
@@ -11,6 +12,31 @@ const VERB = {
 const BRAND = { handle: 'entirehq', domain: 'entire.io' };
 
 const MAX_BODY = 500;
+
+export function withGithubStatus(payload, status) {
+  const description = status?.ok
+    ? `${status.description} — ${status.active ? 'current disruption confirmed' : 'no current disruption confirmed'}`
+    : 'Check unavailable — current status unknown';
+  const details = status?.ok
+    ? [...status.components.map((c) => c.name), ...status.incidents.map((i) => i.name)]
+    : [];
+  const checked = Date.parse(status?.checkedAt);
+  const timestamp = Number.isFinite(checked)
+    ? ` · checked <!date^${Math.floor(checked / 1000)}^{date_short_pretty} at {time}|${status.checkedAt}>`
+    : '';
+  const summary = body([description, ...details].join(' · '));
+  return {
+    ...payload,
+    text: `${payload.text} · githubstatus.com: ${summary}`,
+    blocks: [...payload.blocks, {
+      type: 'context',
+      elements: [{
+        type: 'mrkdwn',
+        text: `<https://www.githubstatus.com/|githubstatus.com>: ${escapeSlack(summary)}${timestamp}`,
+      }],
+    }],
+  };
+}
 
 // Slack mrkdwn treats these three as control characters. Tweet text is
 // untrusted input — without this a tweet could forge a link in our channel.
@@ -73,6 +99,22 @@ function linkTag(tweet, brand) {
 }
 
 export function buildTweetMessage(tweet, triage = null, brand = BRAND) {
+  const opportunity = tweet.matchedVia === MATCH_GITHUB ? githubOpportunity(tweet) : null;
+  if (opportunity) {
+    const epoch = Math.floor(Date.parse(tweet.createdAt) / 1000);
+    return {
+      text: `${opportunity.tag} · @${tweet.author}: ${opportunity.summary} — ${body(tweet.text).slice(0, 180)}`,
+      blocks: [
+        { type: 'section', text: { type: 'mrkdwn', text:
+          `*${opportunity.tag}* · @${escapeSlack(tweet.author)}\n${escapeSlack(opportunity.summary)}\n>${escapeSlack(body(tweet.text))}` } },
+        { type: 'section', text: { type: 'mrkdwn', text: `*Reply idea:* ${escapeSlack(opportunity.reply)}` } },
+        { type: 'context', elements: [{ type: 'mrkdwn', text: [
+          `<${tweet.url}|View / reply on X>`, reach(tweet),
+          `<!date^${epoch}^{date_short_pretty} at {time}|${tweet.createdAt}>`,
+        ].filter(Boolean).join(' · ') }] },
+      ],
+    };
+  }
   const did = action(tweet, brand);
   const epoch = Math.floor(new Date(tweet.createdAt).getTime() / 1000);
   const handle = escapeSlack(tweet.author);

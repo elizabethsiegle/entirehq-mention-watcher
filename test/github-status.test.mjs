@@ -79,9 +79,84 @@ test('HTTP errors, invalid JSON, network failures and timeouts remain unknown, n
     async () => { throw new DOMException('timed out', 'TimeoutError'); },
     async () => ({ ok: true, json: async () => ({}) }),
   ]) {
-    const status = await fetchGithubStatus({ fetchImpl });
+    const status = await fetchGithubStatus({ fetchImpl, sleep: async () => {} });
     assert.equal(status.ok, false);
     assert.equal(status.active, false);
+    assert.ok(Number.isFinite(Date.parse(status.checkedAt)));
     assert.match(describeGithubStatus(status), /unavailable — replies held/);
   }
+});
+
+test('transient failures recover with bounded backoff and a new timeout for each attempt', async () => {
+  for (const failure of [
+    async () => { throw new TypeError('fetch failed'); },
+    async () => { throw new DOMException('timed out', 'TimeoutError'); },
+    async () => ({ ok: false, status: 408 }),
+    async () => ({ ok: false, status: 429 }),
+    async () => ({ ok: false, status: 503 }),
+    async () => ({ ok: true, json: async () => { throw new SyntaxError('invalid JSON'); } }),
+  ]) {
+    const signals = [];
+    const waits = [];
+    const status = await fetchGithubStatus({
+      fetchImpl: async (url, options) => {
+        assert.equal(url, GITHUB_STATUS_URL);
+        assert.equal(options.headers['cache-control'], 'no-cache');
+        signals.push(options.signal);
+        if (signals.length < 3) return failure();
+        return { ok: true, json: async () => summary({ incidents: [incident()] }) };
+      },
+      sleep: async (ms) => { waits.push(ms); },
+    });
+    assert.equal(status.ok, true);
+    assert.equal(status.active, true);
+    assert.equal(new Set(signals).size, 3);
+    assert.deepEqual(waits, [500, 1000]);
+  }
+});
+
+test('persistent network failures stop after three attempts and preserve the underlying cause', async () => {
+  let calls = 0;
+  const status = await fetchGithubStatus({
+    fetchImpl: async () => {
+      calls++;
+      throw new TypeError('fetch failed', { cause: Object.assign(new Error('socket closed'), { code: 'ECONNRESET' }) });
+    },
+    sleep: async () => {},
+  });
+  assert.equal(calls, 3);
+  assert.equal(status.ok, false);
+  assert.equal(status.active, false);
+  assert.match(status.error, /fetch failed \(ECONNRESET\); 3 attempts/);
+});
+
+test('permanent HTTP errors and invalid status schemas do not retry', async () => {
+  for (const response of [
+    { ok: false, status: 403 },
+    { ok: false, status: 404 },
+    { ok: true, json: async () => ({}) },
+  ]) {
+    let calls = 0;
+    const status = await fetchGithubStatus({
+      fetchImpl: async () => { calls++; return response; },
+      sleep: async () => assert.fail('permanent errors must not retry'),
+    });
+    assert.equal(calls, 1);
+    assert.equal(status.ok, false);
+    assert.equal(status.active, false);
+    assert.match(status.error, /; 1 attempt$/);
+  }
+});
+
+test('a failed check never reuses an earlier confirmed disruption', async () => {
+  const confirmed = await fetchGithubStatus({
+    fetchImpl: async () => ({ ok: true, json: async () => summary({ incidents: [incident()] }) }),
+  });
+  assert.equal(confirmed.active, true);
+  const failed = await fetchGithubStatus({
+    fetchImpl: async () => { throw new Error('offline'); },
+    sleep: async () => {},
+  });
+  assert.equal(failed.ok, false);
+  assert.equal(failed.active, false);
 });

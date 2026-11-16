@@ -12,6 +12,7 @@ const config = loadConfig({
   BROWSERBASE_API_KEY: 'test', BROWSERBASE_PROJECT_ID: 'test',
   X_AUTH_TOKEN: 'test', X_CSRF_TOKEN: 'test', SLACK_WEBHOOK_URL: 'https://example.test/webhook',
 });
+const now = Date.parse('2026-10-27T12:00:00Z');
 const raw = (id, text) => ({
   id, text, author: 'dev', url: `https://x.com/dev/status/${id}`,
   createdAt: '2026-10-27T06:00:00Z', conversationId: 'thread',
@@ -25,9 +26,9 @@ test('GitHub results must discuss reliability in their own text, not merely link
   assert.equal(isGithubReliabilityMention(raw('5', 'https://t.co/repo')), false);
 });
 
-test('GitHub query defaults cover outages and reliability, with a separate override', () => {
+test('GitHub query defaults cover hosting pain and alternatives, with a separate override', () => {
   assert.match(config.githubSearchQuery, /github/);
-  for (const term of ['outage', 'downtime', 'reliability', 'degraded']) {
+  for (const term of ['outage', 'downtime', 'alternative', 'cannot push', 'degraded']) {
     assert.ok(config.githubSearchQuery.includes(term));
   }
   const overridden = loadConfig({
@@ -40,7 +41,7 @@ test('GitHub query defaults cover outages and reliability, with a separate overr
 
 test('separate searches deliver GitHub tweets once with accurate labels and retry on Slack failure', async () => {
   const calls = [];
-  const result = await scrapeWatchSearches(config, { scrape: async (c) => {
+  const result = await scrapeWatchSearches(config, { now, scrape: async (c) => {
     calls.push(c);
     return { source: 'json', loginWall: false, tweets: c.searchQuery === config.searchQuery
       ? [raw('1', '@entirehq great'), raw('2', '@entirehq github outage')]
@@ -56,8 +57,8 @@ test('separate searches deliver GitHub tweets once with accurate labels and retr
   assert.equal(github.matchedVia, 'github');
   assert.match(buildPrompt(github), /Matched: GitHub outage\/reliability search/);
   const payload = buildTweetMessage(github, { tier: 'routine' });
-  assert.match(payload.text, /discussed GitHub reliability/);
-  assert.match(JSON.stringify(payload.blocks), /GitHub reliability/);
+  assert.match(payload.text, /GITHUB DOWN/);
+  assert.match(JSON.stringify(payload.blocks), /Reply idea/);
   assert.doesNotMatch(JSON.stringify(payload), /mentioned @entirehq/);
   const failed = await postToSlack(config.slackWebhookUrl, payload, {
     fetchImpl: async () => ({ ok: false, status: 503 }), retryDelayMs: 0,
@@ -85,9 +86,38 @@ test('login walls on either search are surfaced', async () => {
   assert.equal(result.loginWall, true);
 });
 
+test('both searches exclude tweets older than three days before delivery and replies', async () => {
+  for (const source of ['json', 'dom']) {
+    const tweets = [
+      { ...raw('recent', '@entirehq GitHub down'), createdAt: new Date(now).toISOString() },
+      { ...raw('boundary', '@entirehq GitHub down'), createdAt: new Date(now - 3 * 86400000).toISOString() },
+      { ...raw('expired', '@entirehq GitHub down'), createdAt: new Date(now - 3 * 86400000 - 1).toISOString() },
+      { ...raw('last-month', '@entirehq GitHub down'), createdAt: '2026-09-27T12:00:00Z' },
+      { ...raw('invalid', '@entirehq GitHub down'), createdAt: 'invalid' },
+      { ...raw('future', '@entirehq GitHub down'), createdAt: new Date(now + 1).toISOString() },
+    ];
+    const result = await scrapeWatchSearches(config, { now, scrape: async () => ({ source, tweets, loginWall: false }) });
+    assert.deepEqual(result.tweets.map((t) => t.id), ['recent', 'boundary', 'recent', 'boundary']);
+    // Raw counts remain available so stale results do not trigger extractor-failure alerts.
+    assert.deepEqual(result.searches.map((s) => s.tweets.length), [6, 6]);
+  }
+});
+
 test('failed searches identify the affected monitor and do not look like empty results', async () => {
   await assert.rejects(scrapeWatchSearches(config, { scrape: async (c) => {
     if (c.searchQuery === config.githubSearchQuery) throw new Error('quota exceeded');
     return { source: 'json', tweets: [], loginWall: false };
   } }), /GitHub reliability search failed: quota exceeded/);
+});
+
+test('search delivery drops non-actionable GitHub chatter but preserves direct Entire mentions', async () => {
+  const result = await scrapeWatchSearches(config, { now, scrape: async (c) => ({
+    source: 'json', loginWall: false,
+    tweets: c.searchQuery === config.searchQuery
+      ? [raw('direct', '@entirehq how is your reliability?')]
+      : [raw('bot', 'GitHub is down'), raw('ci', 'GitHub Actions down'),
+        raw('chatter', 'GitHub reliability has improved'), raw('request', 'Any GitHub alternatives?')]
+        .map((t) => t.id === 'bot' ? { ...t, author: 'githubstatus' } : t),
+  }) });
+  assert.deepEqual(result.tweets.map((t) => t.id), ['direct', 'request']);
 });

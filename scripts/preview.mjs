@@ -5,6 +5,7 @@ import { triage, MUTED, PRIORITY } from './tier.mjs';
 import { classify, createClient } from './classify.mjs';
 import { planAnnouncements, summarizeChain, chainIdOf } from './chain.mjs';
 import { printWarning } from './notify-terminal.mjs';
+import { githubOpportunity } from './github-opportunity.mjs';
 
 loadEnvFile(getProjectDir());
 
@@ -51,6 +52,8 @@ for (const { tweet, decision, verdict } of rows) {
       tweet.text.replace(/\s+/g, ' ').slice(0, 56),
   );
   if (verdict?.ok && verdict.reason) console.log(`${' '.repeat(15)}${verdict.reason}`);
+  const opportunity = tweet.matchedVia === 'github' ? githubOpportunity(tweet) : null;
+  if (opportunity) console.log(`  ${opportunity.tag}: ${opportunity.summary}\n  Reply idea: ${opportunity.reply}`);
 }
 
 const counts = rows.reduce((acc, r) => ({ ...acc, [r.decision.tier]: (acc[r.decision.tier] || 0) + 1 }), {});

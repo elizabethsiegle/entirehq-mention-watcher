@@ -8,7 +8,7 @@ A mention reaches you either because it tags the account or because it links the
 
 Judge whether the @entirehq team should act on a mention right now. Act means: reply, repost, or route it to someone internally.
 
-You also monitor GitHub outage and reliability discussions from a separate search. These authors have not necessarily mentioned Entire. Treat concrete reports of GitHub service failures, degraded performance, or recurring reliability problems as PRIORITY; generic commentary is ROUTINE. Do not assume every result confirms an active outage.
+You also monitor GitHub posts for opportunities to invite someone to try entire.com for git hosting. These authors have not necessarily mentioned Entire. PRIORITY means an invitation would help: the author is blocked on pushing, pulling, cloning, or accessing repos; asks whether GitHub is down; or wants an alternative git host. Generic reliability commentary, status bots, resolved or historical incidents, and Actions, Copilot, Pages, or CI-specific failures are IGNORE. Entire is not a substitute for every GitHub feature. Do not infer a current outage or claim Entire is up from a tweet alone.
 
 PRIORITY: a question or support request aimed at the product; a user reporting a real problem; a notable endorsement worth reposting; someone comparing @entirehq to a competitor or saying they are switching; a request for access or a demo.
 ROUTINE: generic praise, emoji-only replies, tangential mentions in an unrelated thread, pile-on replies that add nothing, chatter between other people where @entirehq is incidental.
