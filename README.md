@@ -65,6 +65,13 @@ Status accounts, resolved or historical incidents, generic reliability chatter,
 retweets, and Actions/Copilot/Pages/CI-specific complaints are excluded. An LLM
 `IGNORE` verdict also suppresses GitHub prospects; direct Entire mentions retain
 their existing triage behavior. Reply ideas do not confirm either service's uptime.
+GitHub prospects must be standalone original posts by individual indie developers,
+solo builders, or independent founders. Replies, quotes, corporate accounts and
+uncertain identities are excluded. Full post text and available author name/bio
+are reviewed for genuine personal hosting pain; jokes, quoted outage questions,
+sarcasm and hypotheticals do not qualify. GitHub delivery requires explicit LLM
+approval. If that review is unavailable, candidates remain unseen for a later
+poll instead of falling back to keyword or follower scoring.
 GitHub-only results get individual posts even when a thread has exhausted its
 routine reply budget. A tweet found by both searches is delivered only once.
 Both searches exclude tweets older than 72 hours before Slack delivery or

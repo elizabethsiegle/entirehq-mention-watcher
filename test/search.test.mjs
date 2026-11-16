@@ -97,10 +97,22 @@ test('both searches exclude tweets older than three days before delivery and rep
       { ...raw('future', '@entirehq GitHub down'), createdAt: new Date(now + 1).toISOString() },
     ];
     const result = await scrapeWatchSearches(config, { now, scrape: async () => ({ source, tweets, loginWall: false }) });
-    assert.deepEqual(result.tweets.map((t) => t.id), ['recent', 'boundary', 'recent', 'boundary']);
+    assert.deepEqual(result.tweets.map((t) => t.id), ['recent', 'boundary']);
     // Raw counts remain available so stale results do not trigger extractor-failure alerts.
     assert.deepEqual(result.searches.map((s) => s.tweets.length), [6, 6]);
   }
+});
+
+test('GitHub prospects exclude replies and quote posts even with a custom query', async () => {
+  const result = await scrapeWatchSearches({ ...config, githubSearchQuery: 'github' }, { now, scrape: async (c) => ({
+    source: 'json', loginWall: false,
+    tweets: c.searchQuery === config.searchQuery ? [] : [
+      raw('original', 'GitHub is down again'),
+      { ...raw('reply', 'GitHub is down again'), inReplyToStatusId: '123' },
+      { ...raw('quote', 'GitHub is down again'), isQuoteStatus: true },
+    ],
+  }) });
+  assert.deepEqual(result.tweets.map((t) => t.id), ['original']);
 });
 
 test('failed searches identify the affected monitor and do not look like empty results', async () => {

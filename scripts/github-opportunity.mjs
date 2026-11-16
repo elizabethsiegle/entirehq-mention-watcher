@@ -2,12 +2,21 @@ import { isGithubOutage } from './reply-match.mjs';
 
 export function githubOpportunity(tweet) {
   const text = String(tweet.text || '').replace(/https?:\/\/\S+/gi, '').replace(/\s+/g, ' ').trim();
+  if (tweet.inReplyToStatusId || tweet.kind === 'reply' || tweet.isQuoteStatus || tweet.kind === 'quote' || /^@/.test(text)) return null;
+  const profile = tweet.authorProfile || {};
+  if (/business|government|organization/i.test(profile.verifiedType || '')) return null;
+  if (/\b(?:official account|we (?:are|build|provide|help)|our (?:platform|product|customers)|news (?:outlet|updates)|status (?:page|updates))\b/i.test(`${profile.name || ''} ${profile.bio || ''}`)) return null;
   if (!/\bgithub\b/i.test(text) || tweet.isRetweet || /^RT\s+@/i.test(text)) return null;
   if (/status|outage|isdown|vendorwatch/i.test(tweet.author || '')) return null;
   if (/\b(?:resolved|recovered|back up|back online|operational|postmortem|post-mortem|yesterday|last week|last month|remember when)\b/i.test(text)) return null;
   if (/\b(?:not|never|no longer)\s+(?:currently\s+)?(?:down|unavailable)|\bno\s+(?:github\s+)?outage|\bgithub\s+was\b/i.test(text)) return null;
   if (/\b(?:imagine|what if|when|if)\s+github\b/i.test(text) && !/\b(?:wondering|checking|know|sure)\s+if\s+github\b/i.test(text)) return null;
   if (/\b(?:subscribe|status update|incident update|monitoring update|uptime report|sponsored|airdrop|giveaway)\b/i.test(text)) return null;
+  if (/\b(?:would|could)\s+(?:crash|break|fail)|\bmillions of engineers\b|\b(?:joking|satire|hypothetically)\b/i.test(text)) return null;
+
+  // Quoted outage language is not evidence that the author is experiencing it.
+  const ownText = text.replace(/["“][^"”]*["”]/g, '');
+  if (!/\bgithub\b/i.test(ownText)) return null;
 
   const alternative = /\b(?:alternative(?:s)?|replace(?:ment)?|switch(?:ing)?|mov(?:e|ing) (?:off|away)|migrat(?:e|ing))\b/i.test(text)
     && (/\b(?:looking|seeking|need|want|recommend|anyone|suggest|considering|should|ready|time to|any)\b/i.test(text)

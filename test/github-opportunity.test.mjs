@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { githubOpportunity } from '../scripts/github-opportunity.mjs';
 import { buildTweetMessage } from '../scripts/notify-slack.mjs';
 import { triage } from '../scripts/tier.mjs';
+import { classify, buildPrompt } from '../scripts/classify.mjs';
 
 const tweet = (text, overrides = {}) => ({
   author: 'developer', text, matchedVia: 'github', kind: 'mention',
@@ -58,4 +59,39 @@ test('a classifier rejection suppresses GitHub prospects while preserving direct
   const verdict = { ok: true, tier: 'IGNORE', reason: 'not a useful invitation' };
   assert.equal(triage(tweet('GitHub is down'), { verdict }).tier, 'muted');
   assert.equal(triage(tweet('@entirehq GitHub is down', { matchedVia: 'handle' }), { verdict }).tier, 'routine');
+});
+
+test('rejects the complete Slack joke, replies, quote posts and corporate profiles', () => {
+  const joke = '@thenamanraj @grok Honestly, Slack would crash first from millions of engineers asking "is GitHub down for you?"';
+  assert.equal(githubOpportunity(tweet(joke)), null);
+  assert.equal(githubOpportunity(tweet(joke.replace(/^@thenamanraj @grok /, ''))), null);
+  assert.equal(githubOpportunity(tweet('GitHub is down again', { inReplyToStatusId: '12' })), null);
+  assert.equal(githubOpportunity(tweet('GitHub is down again', { kind: 'reply' })), null);
+  assert.equal(githubOpportunity(tweet('GitHub is down again', { isQuoteStatus: true })), null);
+  assert.equal(githubOpportunity(tweet('GitHub is down again', { authorProfile: { verifiedType: 'Business' } })), null);
+  assert.equal(githubOpportunity(tweet('GitHub is down again', { authorProfile: { bio: 'We provide software for our customers' } })), null);
+  assert.ok(githubOpportunity(tweet("I can't push to GitHub", { authorProfile: { bio: 'Solo founder. Indie dev.' } })));
+});
+
+test('GitHub notifications require explicit indie-developer and full-context approval', () => {
+  for (const verdict of [
+    { ok: true, tier: 'PRIORITY' },
+    { ok: true, tier: 'PRIORITY', githubEligible: false },
+    { ok: true, tier: 'ROUTINE', githubEligible: true },
+  ]) assert.equal(triage(tweet('GitHub is down'), { verdict }).tier, 'muted');
+  assert.equal(triage(tweet('GitHub is down'), { verdict: { ok: true, tier: 'PRIORITY', githubEligible: true } }).tier, 'priority');
+});
+
+test('semantic review receives author evidence and the entire untruncated post', async () => {
+  const full = `${'Context '.repeat(150)}Actually this is a hypothetical, not an outage.`;
+  const candidate = tweet(full, { authorProfile: { name: 'Solo Builder', bio: 'Indie dev shipping my own apps' } });
+  assert.ok(buildPrompt(candidate).includes(full));
+  const verdict = await classify(candidate, { client: { messages: { create: async (request) => {
+    assert.match(request.messages[0].content, /Indie dev shipping my own apps/);
+    assert.match(request.system, /Slack would crash first/);
+    assert.ok(request.tools[0].input_schema.required.includes('githubEligible'));
+    return { content: [{ type: 'tool_use', input: { tier: 'IGNORE', reason: 'hypothetical, not personal hosting pain', githubEligible: false } }] };
+  } } } });
+  assert.equal(verdict.githubEligible, false);
+  assert.equal(verdict.tier, 'IGNORE');
 });

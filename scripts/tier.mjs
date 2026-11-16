@@ -19,7 +19,7 @@ export function decideTier({ tweet, score, reasons, verdict, mutedHandles = [], 
   const combined = [...reasons];
   if (verdict?.ok && verdict.reason) combined.push(verdict.reason);
 
-  if (tweet.matchedVia === 'github' && llm === 'IGNORE') {
+  if (tweet.matchedVia === 'github' && verdict?.ok && (llm !== 'PRIORITY' || verdict.githubEligible !== true)) {
     return { tier: MUTED, reasons: combined, verdict: llm };
   }
 

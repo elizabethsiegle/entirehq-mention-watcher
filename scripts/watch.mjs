@@ -130,13 +130,18 @@ async function decideOn(tweet) {
   }
 
   const verdict = anthropic ? await classify(tweet, { client: anthropic }) : null;
+  if (tweet.matchedVia === 'github' && !verdict?.ok) {
+    logLine(`GitHub prospect deferred: @${tweet.author} — full-context review unavailable; retry next poll`);
+    return { defer: true };
+  }
   if (verdict && !verdict.ok) logLine(`triage degraded (${verdict.error}) — score only`);
 
-  return triage(tweet, {
+  const decision = triage(tweet, {
     mutedHandles: config.mutedHandles,
     teamHandles: config.teamHandles,
     verdict,
   });
+  return decision.tier === MUTED ? null : decision;
 }
 
 function statusForTweets(payload, tweets, githubStatus) {
@@ -277,6 +282,7 @@ async function pollOnce(githubStatus) {
   const decided = [];
   for (const tweet of fresh) {
     const decision = await decideOn(tweet);
+    if (decision?.defer) continue;
     if (!decision) {
       store = markSeen(store, tweet.id);
       saveStore(dataDir, store);
