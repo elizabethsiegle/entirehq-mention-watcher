@@ -1,0 +1,13 @@
+look into this: it is returning tweets from last month. and when does it hit the retry limit? @entirehq mention watcher has hit the maximum retry backoff after repeated scrape failures. Mentions are not being tracked until this recovers.
+
+---
+
+enforce a tweet-age cutoff of a few days maybe?
+
+---
+
+improve the summary and tags and what is returned. a lot of the tweets are about github reliability, but they should be ones that make sense for me to reply with "entire.com is up! try us out!"
+
+---
+
+push and restart. it should check routinely like every 5-10 minutes for relevant tweets that i can personally go in and respond to

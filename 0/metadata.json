@@ -1,0 +1,56 @@
+{
+  "cli_version": "0.13.1",
+  "checkpoint_id": "01M7HYK7ZG7W8EHVM6KP11VAH5",
+  "session_id": "01a1d8fe-a132-7800-97d4-96fd5b686319",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-16T10:31:41.854353Z",
+  "branch": "feat/github-outage-auto-replies",
+  "checkpoints_count": 3,
+  "save_step_count": 3,
+  "files_touched": [
+    ".env.example",
+    "README.md",
+    "scripts/classify.mjs",
+    "scripts/config.mjs",
+    "scripts/github-opportunity.mjs",
+    "scripts/github-status.mjs",
+    "scripts/notify-slack.mjs",
+    "scripts/preview.mjs",
+    "scripts/search.mjs",
+    "scripts/tier.mjs",
+    "scripts/watch.mjs",
+    "test/github-opportunity.test.mjs",
+    "test/github-status.test.mjs",
+    "test/notify-slack.test.mjs",
+    "test/search.test.mjs"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6.1-sol",
+  "turn_id": "24023f7b1902",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 248325,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1859584,
+    "output_tokens": 12074,
+    "api_call_count": 29,
+    "subagent_tokens_complete": true
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 1,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 3
+  }
+}
