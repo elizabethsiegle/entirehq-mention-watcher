@@ -1,0 +1,2 @@
+look for tweets from indie devs, not corps. look for main tweets, not replies.
+@thenamanraj @grok Honestly, Slack would crash first from millions of engineers asking "is GitHub down for you?" is not a good one bc read the whole tweet

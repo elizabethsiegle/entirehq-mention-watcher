@@ -1,0 +1,52 @@
+{
+  "cli_version": "0.13.1",
+  "checkpoint_id": "01M7HZ2A6EARDVRHM1BPVFY6C4",
+  "strategy": "manual-commit",
+  "branch": "feat/github-outage-auto-replies",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "scripts/classify.mjs",
+    "scripts/config.mjs",
+    "scripts/filter.mjs",
+    "scripts/github-opportunity.mjs",
+    "scripts/parse.mjs",
+    "scripts/preview.mjs",
+    "scripts/tier.mjs",
+    "scripts/watch.mjs",
+    "test/github-opportunity.test.mjs",
+    "test/parse-json.test.mjs",
+    "test/search.test.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 20221,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1702016,
+    "output_tokens": 7612,
+    "api_call_count": 15,
+    "subagent_tokens_complete": true
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 1,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
